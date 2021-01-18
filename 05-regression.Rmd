@@ -671,5 +671,13 @@ f. Find a 95 percent confidence interval for the slope and compare to c. Comment
 :::
 
 ::: {.exercise #ex:tsastats}
-Consider the 
+Consider the TSA throughput data in `tsa` in the `tswrdata` package. This data gives the number of passengers screened by TSA at various airports and times in the first quarter of 2018.
+
+a. Create a new data frame that has one entry per date, which contains the date, total number of passengers screened, the day of week and time (number of days since start of year).
+b. Plot total passengers screened versus date. Does the plot appear linear?
+c. Create a model of total passengers screened versus time, treating the day of week as a seasonal variable, using `lm`.
+d. Examine the residuals. Do they appear correlated?
+e. Create a  model as in part (c) using `gls` with an AR(1) residual  model.
+f. Create a model as in part (f) but **adding a quadratic term** `I(time^2)` to the model.
+g. Which model from (c), (e) or (f) would you recommend?
 :::
