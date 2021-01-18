@@ -1,0 +1,669 @@
+# Regression Techniques {#regressiontechniques}
+
+In this chapter, we see how regression techniques can be used to model time series.
+Time series that can be modeled using regression have a deterministic aspect to them, 
+which is different thatn most of the models we have seen up to this point.
+
+## One predictor {#onepredictor}
+
+Let's suppose that we are modeling a time series $x_t$ by a sequence of values $u_t$.
+A natural model is
+\[
+x_t = \alpha_0 + \alpha_1 u_t + z_t
+\]
+where $z_t$ are the residuals after modeling. 
+Some differences from standard regression:
+
+1. The $z_t$ are not necessarily normal.
+2. The $z_t$ are not necessarily independent.
+
+The dependence of the residuals is a huge change from classical regression!
+
+Let's think about how we could simulate data that follows a pattern like this.
+Let's choose $\alpha_0 = 1$ and $\alpha_1 = 2$, and we imagine that $u_t$ is just some time series.
+
+```{r}
+set.seed(4840)
+u <- cumsum(rnorm(100))
+plot(u)
+```
+
+Now, we imagine that $x_t = 1 + 2 \times u_t + z_t$, where $z_t$ is an AR(1) time series. 
+Let's create the residuals:
+
+```{r}
+w <- rnorm(100, sd = 5)
+z <- w[1]
+for(i in 2:100) z[i] <- 0.5 * z[i - 1] + w[i]
+```
+
+Now, we create the response, plot it and create the model. 
+We see that the residuals are indeed correlated!
+
+```{r}
+x <- 1 + 2 * u + z
+plot(u, x)
+acf(lm(x ~ u)$residuals)
+summary(lm(x ~ u))
+```
+
+How does having positively correlated residuals affect things? 
+Well, for one, it makes the $p$-values in `summary` too small. 
+Let's check that by creating a model that has **no** dependence on $u$, and seeing what percentage of times the coefficients are significant.
+
+```{r}
+x <- 1 + z
+summary(lm(x ~ u))$coeff[2,4] #this pulls out the p-value 
+```
+
+Now, we replicate this 1000 times and see how many times the $p$-values are less than .05.
+
+```{r}
+sim_data <- replicate(1000, {
+  w <- rnorm(100, sd = 5) 
+  z <- w[1]
+  for(i in 2:100) z[i] <- 0.5 * z[i - 1] + w[i]
+  x <- 1 + z
+  summary(lm(x ~ u))$coeff[2,4]
+})
+hist(sim_data) #this should be uniform [0,1]
+mean(sim_data < .05)
+```
+
+So, we see that the effective type I error rate when the residuals are positively correlated is closer to 0.22 than to the desired 0.05. 
+We will need to take care of this if we want to do inference on the slope, or even if we want to get confidence intervals for the slope.
+
+::: exercise
+You have seen a similar phenomenon before in _paired t-tests_. Simulate paired data in the following way.
+Let $X_1, \ldots, X_{30}$ be independnet normal with mean 0 and standard deviation 2.
+Let $Y_i = X_i + Z_i$, where $Z_i$ is indpendent standard normal.
+Estimate the effective type I error when doing a two-sample $t$-test of $H_0: \mu_X = \mu_Y$ versus $\mu_X \not= \mu_Y$ on $X$ and $Y$ at $\alpha = .05$ level.
+:::
+
+::: exercise
+What if the residuals are negatively correlated at lag 1? Re-do the simulation with AR(1) residuals that have negative correlation, and see what happens to the effective type I error rate.
+:::
+
+::: exercise
+Use the exact simulation as in the text, but now consider confidence intervals defined in the textbook by plys or minus 2 times the standard error of the estimator. The standard error of the estimator can be obtained through `sqrt(diag(vcov(mod)))`. What percentage of times is the true slope in the 95 percent confidence interval as constructed this way?
+:::
+
+::: exercise
+Consider the `samarket` data in the `tswr` package. 
+
+1. Create a linear model of the price of the SA 40 as an affine function of the USD/ZAR exchange rate.
+2. Create an `acf` plot of the residuals and comment as to whether the residuals appear independent.
+:::
+
+## Linear Regression with One Predictor {#lrwop}
+
+Let's look at the global mean temperature time series `yearly` in the `tswrdata` package. This data set contains two different estimates for the departure from overall temperature in each year. Let's average those two.
+
+```{r}
+year <- tswrdata::yearly
+library(tidyverse)
+year <- year %>% 
+  group_by(year) %>% 
+  summarize(mean_temp = mean(mean))
+plot(year$year, year$mean_temp)
+```
+
+There does not seem to be a linear dependence of the mean temperature on the year. However, if we restrict to 1950+, then there may well be, so that is what we will do. A better procedure would take into account all of the data.
+
+```{r}
+year <- year %>% 
+  filter(year > 1950)
+plot(year$year, year$mean_temp)
+```
+
+Now, we fit a linear model of `mean_temp` on `year`. 
+
+```{r}
+mod <- lm(mean_temp ~ year, data = year)
+summary(mod)
+```
+
+We see that we have a reported $p$-value for the slope that is very small. However, let's check the residuals for dependence in this time series.
+
+```{r}
+acf(mod$residuals)
+```
+
+You can see that we do not have independent residuals, so the $p$-values associated with the slope are **overestimated**. That is, the true values are larger than what we estimated in the linear model above. Of course, it seems likely by looking at the plot that it is OK in the end, but still we should take care of this, which we will do in Section \@ref(gls).
+
+## Generalized Least Squares {#gls}
+
+Generalized least squares are a way to do regression when the residuals are correlated, such as above. The assumptions on OLS regression are that the errors are **independent** and **normally distributed** with the same variance. In this case, we have **dependent** errors. What to do?
+
+### Review and extension of covariance
+
+First, recall the definition of the **covariance** of two random variables $X$ and $Y$.
+
+::: definition
+Let $X$ and $Y$ be random variables. The covariance of $X$ and $Y$ is 
+\[
+{\text{Cov}}(X, Y) = E[XY] - E[X]E[Y]
+\]
+:::
+
+From the definition, we see that ${\text{Cov}}(X, X) = {\text{Var}}(X)$. More generally, given a sequence of random variable $X_1, \ldots, X_n$, the covariance matrix is defined to have entries $a_{i,j}$ given by
+
+\[
+a_{i,j} = {\text {Cov}}(X_i, X_j)
+\]
+
+This means that the diagonal of the covariance matrix gives the variances of the random variables, and the off-diagonal entries are some measure of the dependence between the random variables. 
+
+::: alert
+Not every $n \times n$ matrix is the covariance matrix of a collection of random variables! The diagonal has to be non-negative, and $a_{1,2}$ entry must equal the $a_{2,1}$ entry, for example.
+:::
+
+We next turn to the question: which matrices **are** the covariance matrix of some collection of random variables? 
+
+::: {.theorem #thm:covariancematrix}
+Let $M$ be an $n \times n$ matrix. Then, there exist random variable $X_1, \ldots, X_n$ such that $M$ is the covariance matrix of $X_1, \ldots, X_n$ if and only if $M = A A^T$ for some symmetric matrix $A$.
+:::
+
+Theorem \@ref(thm:covariancematrix) tells us how we can create a $3 \times 3$ covariance matrix, for example.
+
+```{r}
+a <- matrix(rnorm(9), nrow = 3)
+a <- a + t(a) #this makes a symmetric
+a
+m <- t(a) %*% a
+m
+```
+
+The matrix $m$ is a covariance matrix. If we want to create a random sample that has the covariance specified by $m$, then we can do the following.
+
+```{r}
+MASS::mvrnorm(n = 10, mu = rep(0, 3), Sigma = m)
+```
+
+Now, we can check that the covariance matrix of the data generated by `mvrnorm` is the same as the matrix `m` as follows.
+
+```{r}
+dat <- MASS::mvrnorm(n = 100000, mu = rep(0, 3), Sigma = m)
+cov(dat)
+m
+```
+
+Looks pretty close to me! 
+
+::: alert
+Don't stop reading yet, the punchline is coming up!
+:::
+
+Now, if we want to **transform** our random variables so that they are no longer dependent, we can multiply the data by $A^{-1}$, where $M = A^TA$ is the covariance matrix! You compute the matrix inverse in R using `solve`, which is not the most intuitive.
+
+```{r}
+solve(a) %*% a
+cov(dat %*% solve(a))
+```
+
+See, this is approximately the identity matrix! That is the trick that we are going to use in order to take care of our dependent residuals. 
+
+1. Estimae the covariance matrix $M$ of the residuals from the data
+2. Multiply by $A^{-1}$, where $M = A^TA$.
+3. Use ordinary least squares.
+
+We will omit some of the details, especially in the part where we have to estimate the covariance matrix from the data. The problem is that the covariance matrix has $n^2$ entries, and we only have $n$ data points. So, we need to assume some extra structure on the covariance matrix, which will be explained below.
+
+### Model matrices for linear regression {#mmflr}
+
+The second "review" item that we need to cover before we can understand generalized least squares is _model matrices_. Have you ever wondered how R thinks about the constant term in linear regression? Is it special, or is it just the same as the other variables? Well, it turns out it can be thought of as the same as the other variables in a linear model. 
+
+Let's suppose that we have a model $y = \beta_0 + \beta_1 x + \epsilon$ and some data, and we want to use `lm` to estimate $\beta_0$ and $\beta_1$. It appears from the formulation that $\beta_0$ is fundamentally different than $\beta_1$. However, if we create a dummy variable $z$ which has data always equal to 1 and rewrite our model as $y = \beta_0 z + beta_1 x + \epsilon$, we see that the two coefficients are similar. It is just that the data for $z$ is the constant 1. Let's check this with some code.
+
+```{r}
+x <- runif(20)
+y <- 1 + 2 * x + rnorm(20, 0, 3)
+model.matrix(lm(y ~ x))
+lm(y ~ x)
+summary(lm(y ~ x))
+```
+
+This is the regular way. Now, let's add the $z$ variable, but we won't let R compute the estimate of an intercept. That is because $z$ is our intercept.
+
+```{r}
+z <- rep(1, 20)
+model.matrix(lm(y ~ z + x - 1))
+lm(y ~ z + x - 1)
+summary(lm(y ~ z + x - 1))
+```
+
+Note that the summary looks very similar. The difference is that $z$ is now a variable in the regression, and it explains quite a bit of variance, so the $R$ squared is larger. But for most purposes, these are the same.
+
+\begin{align*}
+\begin{bmatrix}
+y_1\\
+y_2\\
+\vdots\\
+y_n
+\end{bmatrix} = 
+
+\begin{bmatrix}
+1 & x_{12}\\
+1 & x_{22}\\
+\vdots& \vdots\\
+1 & x_{2n}
+\end{bmatrix} \times 
+\begin{bmatrix}
+\beta_0\\
+\beta_1
+\end{bmatrix} + 
+
+\begin{bmatrix}
+\epsilon_1\\
+\epsilon_2\\
+\vdots\\
+\epsilon_n
+\end{bmatrix}
+
+\end{align*}
+
+The matrix that is multiplied by $(\beta_0, \beta_1)$ is called the **model matrix**.
+
+
+### Assume the covariance matrix is known {#atcmik}
+
+Let's assume that we have 20 data points and the covariance matrix is given in the following piece of code.
+
+```{r}
+a <- matrix(rnorm(20^2), nrow = 20)
+a <- a + t(a)
+m <- t(a) %*% a
+```
+
+The model for our data is
+\[
+Y = X \begin{bmatrix} \beta_0\\ \beta_1 \end{bmatrix} + \epsilon
+\]
+as in the equation at the end of Section \@ref(mmflr). If we multiply through on the left by $A^{-1}$, we get
+
+\[
+A^{-1} Y = A^{-1}X \begin{bmatrix} \beta_0\\ \beta_1 \end{bmatrix} + A^{-1} \epsilon
+\]
+
+Since $A^{-1} \epsilon$ is independent, this new model better satisfies the assumptions of regression. Let's see how it works in the example we started above.
+
+
+
+```{r}
+a <- matrix(runif(20^2), nrow = 20)
+errors <- rnorm(20)#we are doing the errors first
+
+x <- runif(20, 0, 1)
+y <- 1 +  10 * x + a %*% errors
+plot(x, y)
+```
+
+Our model with the **dependent** errors is given by:
+
+```{r}
+summary(mod <- lm(y ~ x))
+```
+
+Now, if we make the transformation given above, we have
+
+```{r}
+ytrans <- as.vector(solve(a) %*% y)
+xtrans <- as.vector(solve(a) %*% x)
+ztrans <- as.vector(solve(a) %*% rep(1, 20))
+summary(modtrans <- lm(ytrans ~ ztrans + xtrans - 1))
+```
+
+One question we might have is: which one of these "works better" in the sense of a 95 percent confidence interval for the slope contains the slope about 95 percent of the time? Let's run two simulations. In the first one, we see what happens when we don't transform the data.
+
+```{r simci, cache = TRUE}
+a <- matrix(runif(20^2), nrow = 20)
+m <- t(a) %*% a
+x <- runif(20)
+
+sim_data <- replicate(10000, {
+  errors <- rnorm(20)
+  y <- 1 +  10 * x + a %*% errors
+  
+  ci <- confint(lm(y ~ x))
+  ci[2, 1] < 10 && ci[2, 2] > 10
+})
+mean(sim_data)
+```
+
+When we do transform the data, this is what we get:
+
+```{r simci2, cache = TRUE}
+sim_data <- replicate(10000, {
+  errors <- rnorm(20)
+  y <- 1 +  10 * x + a %*% errors
+  
+  ytrans <- as.vector(solve(a) %*% y)
+  xtrans <- as.vector(solve(a) %*% x)
+  ztrans <- as.vector(solve(a) %*% rep(1, 20))
+  
+  ci <- confint(lm(ytrans ~ ztrans + xtrans - 1))
+  ci[2, 1] < 10 && ci[2, 2] > 10
+})
+mean(sim_data)
+```
+
+We see that the 95 percent confidence interval for the slope contains the true slope of 10 about 95 percent of the time, as desired. The $p$-values associated with testing $H_0: \beta_1 = 0$ are also accurate after the switch.
+
+### Using nlme::gls
+
+In practice, we will not know the covariance matrix that describes the dependency between residuals. That will need to be estimated from the data. However, there are more entries in the covariance matrix than we have data points, so we need to make some assumptions about the form of the dependence between residual values. Since we are dealing with time series, it will often make sense to assume that it follows an AR(1) pattern, or some other pattern that is associated with time series. In this section, we first simulate data that follows a linear relationship but has errors that are AR(1), then we use `nlme::gls` to estimate the slope and intercept associated with the relationship.
+
+I chose a seed that gives a typical looking acf plot for the error terms.
+
+```{r}
+set.seed(8)
+ind_errors <- rnorm(20)
+alpha <- .7
+ar_errors <- ind_errors[1]
+for(i in 2:20) ar_errors[i] <- ar_errors[i - 1] * alpha + ind_errors[i]
+acf(ar_errors)
+```
+
+Now, we create the data. Note that the relationship does not look linear. That is at least in part due to the fact that we have 4-6 consecutive errors that are quite low. These values would not likely all be this low if the errors were independent.
+
+```{r}
+x <- 1:20
+y <- .1 + .3 * x + ar_errors
+plot(x, y)
+```
+
+Suppose we incorrectly modeled this as `y ~ x` using `lm`.
+
+```{r}
+mod <- lm(y ~ x)
+acf(mod$residuals)
+```
+
+We see that there is a pretty strong correlation among the residuals, and the estimate of the correlation at lag 1 is given by `acf(mod$residuals)[1]` = `r round(acf(mod$residuals)$acf[2,1,1], 3)`.
+
+To model the data, we do the following. We choose .684 inside of `corAR1` because the value of the `acf` plot at lag 1 is about 0.684.
+
+```{r}
+mod_gls <- nlme::gls(y ~ x, correlation = nlme::corAR1(.684))
+summary(mod_gls)
+summary(mod)
+```
+
+Notice that the standard errors of the estimates are close to 5 times as large! Incorrectly modeling the data with independent residuals can lead to big problems. Ideally, we would want to check that we have adequately described the correlation in the residuals via `corAR1`, but we put that off for another time.
+
+## Seasonality and linear regression {#salr}
+
+As we have seen, many times our data has a **seasonal** component. Let's return to the mean temperature series, but look at the **monthly** values. We again take the average of the two sources and restrict to 1960+.
+
+```{r}
+mm <- tswrdata::monthly
+mm <- mm %>% 
+  group_by(date) %>% 
+  summarize(temp = mean(mean)) %>% 
+  filter(lubridate::year(date) > 1960)
+ggplot(mm, aes(x = date, y = temp)) + 
+  geom_line() + 
+  geom_smooth()
+```
+
+It is not 100 percent clear that there is a seasonal trend, but I also wouldn't want to assume there is no seasonal trend. The model that we have is 
+
+\[
+y_t = m_t + s_t + z_t
+\]
+
+where $y_t$ is the observation at time $t$, $m_t = \beta_0 + \beta_1 x_t$ for some time series $x_t$, $s_t$ is a seasonal additive effect, and $z_t$ are the errors. In this case, we are going to assume that $x_t = t$ is just the time of the observation in months, where Jan 1, 1961 is zero. Since each season is going to have a constant additive value associated with it, we don't need the $\beta_0$ term and we remove it. We do not assume that the errors are independent.
+
+```{r}
+library(lubridate)
+mm <- mm %>% 
+  mutate(month_of_year = factor(lubridate::month(date))) %>% 
+  mutate(time = 0:(nrow(mm) - 1))
+```
+
+```{r}
+library(nlme)
+mod_seasonal <- lm(temp ~ time + month_of_year, data = mm)
+acf(mod_seasonal$residuals)
+pacf(mod_seasonal$residuals)
+mod_seasonal_gls <- gls(temp ~ time + month_of_year - 1, data = mm, correlation = corAR1(value = .7))
+summary(mod_seasonal_gls)
+```
+
+It does not appear that an AR(1) model for the residuals will be sufficient based on the acf (and especially the `pacf`) plot. If we want to use higher order models, we can do it as follows. Note that the $p$-values are much higher in this summary than in the previous model, which is at least partially because we probably mis-specified the model for the residuals before.
+
+```{r armamod, cache=TRUE}
+mod_seasonal_gls_2 <- gls(temp ~ time + month_of_year - 1, 
+                          data = mm, 
+                          correlation = corARMA(p = 2))
+summary(mod_seasonal_gls_2)
+anova(mod_seasonal_gls, mod_seasonal_gls_2)
+```
+
+If we want to predict values for the future, we can use `predict`. We will discuss prediction more later in the notes. In particular, we will want to be able to estimate errors for these estimates.
+
+```{r}
+plot(mm$time, mm$temp, type = "l")
+points(671:682, 
+       predict(mod_seasonal_gls_2, 
+               newdata = data.frame(time = 671:682, month_of_year = factor(1:12))), col = 2)
+```
+
+## Harmonic seasonal models
+
+In the previous section, we assumed that each month had an independent additive effect on the global mean temperature. It is perhaps more plausible that the effect looks like some sin curve that has a period of 12 months, and unknown phase shift and amplitude. You may have slept since you last thought about phase shift and amplitude, so let me remind you. 
+
+The formula $y = A \sin(Bx + C)$ has amplitude $A$, period $2\pi/ B$ and the "start" of the sin curve (what we would normally think of as the origin) has been shifted to the left by $C/B$ units. If we want the period to be 12 months, then $B = 2\pi/ 12$ would work. Let's plot a few functions for various $A$ and $B$.
+
+```{r}
+B <- 2 * pi / 12
+C <- 1
+A <- 2
+C/B
+curve(A * sin(B * x + C), from = -2, to = 10)
+```
+
+We see that the curve now goes up and down 2, it has period 12, and it starts at $-C/B \approx -1.9$. Curves of this type have two parameters, $A$ and $C$, but we can't really use linear regression to figure out the parameters because they aren't of the form `A * data + C * data`. However, we can rewrite sin curves of this form as $A \sin(Bx) + C \cos(Bx)$, where the $A$ and $C$ will be different values. For example to get a curve that looks like the one we had above, we could choose $A = 1.1$ and $C = 1.67$ as below.
+
+```{r}
+A <- 1.1
+C <- sqrt(4 - A^2)
+curve(A * sin(B*x) + C * cos(B * x), from = -2, to = 10)
+```
+
+For our purposes, it isn't important to be able to go back and forth between the two representations, we just need to know that $A \sin(Bx) + C \cos(Bx)$ is actually the same as $A^\prime \sin(Bx + C^\prime)$. The curve may not be a precise sin curve, however, and to get a more realistic looking curve, we add $\sin$ and $\cos$ curves at higher frequencies. Here are some examples of what we might get.
+
+```{r}
+curve(A * sin(B*x) + C * cos(B * x) + -.6 * sin(2 * B * x) + .4 * cos(2 * B * x), from = 0, to = 12)
+curve(1 * sin(B*x) + 2 * cos(B * x) + -.6 * sin(2 * B * x) - .4 * cos(2 * B * x), from = 0, to = 12)
+```
+
+The model looks like this.
+
+\[
+y_t = m_t + \sum_{i = 1}^{\lfloor s/2 \rfloor } a_i \sin(i B x_t) + b_i \cos(i B x_t) + z_t
+\]
+where $m_t$ is the trend, $x_t$ is the predictor which has $s$ cycles in its period, and $z_t$ is the error.
+
+In our case, $s = 12$, so if we take all 12 values of $a_i$ and $b_i$, then we are left with exactly the same model specification as we had when we let each season impact independently. Many times, however, we can improve the model by eliminating the higher frequency terms.
+
+Let's go back to the monthly weather data.
+
+```{r}
+for(i in 1:6) {
+  eval(parse(text = paste0("mm$cos", i, " <- cos(i * B * mm$time)")))
+}
+for(i in 1:6) {
+  eval(parse(text = paste0("mm$sin", i, " <- sin(i * B * mm$time)")))
+}
+mod <- lm(temp ~ . - date - month_of_year, data = mm)
+summary(mod)
+```
+
+We see that only two of the harmonic estimates is signifcant, and they are associated with the base frequency. We can therefore re-do our model as
+
+\[
+y_t = -.1298 + .001347 t + .01473 \cos(B t) + .01975 \sin(B t)
+\]
+
+Let's plot that on the same graph as our original data.
+
+```{r}
+x <- 0:671
+plot(x, (-.1298 + .001347 * x + .01473 * cos(B * x) + .01975 * sin(B * x)), 
+     type = "l", 
+     col = 2, 
+     ylim = c(min(mm$temp), max(mm$temp)))
+points(mm$time, mm$temp, col = 3)
+```
+
+That looks pretty reasonable for a trend. Let's check out the residuals and see whether they appear to be correlated.
+
+```{r}
+pacf(mod$residuals)
+```
+
+Again, it looks like an AR(2) model for this might be appropriate, or perhaps AR(4) since that one is also just above the line. Let's model the error with an AR(2) model for now. We will see in Chapter \@ref() how to do this more generally.
+
+```{r}
+ar(residuals(mod), order.max = 2)
+```
+
+This says that the error term is second order auto-regressive with coefficients .5086 and .2707. That means that the ith error term has form
+
+\[
+z_i = .5086 z_{i - 1} + .2707 z_{i - 2} + w_i
+\]
+
+where $w_i$ are iid normal random variables.
+
+::: {.exercise #ex:simulationchapter5}
+Simulate a time series of length 200 that has AR(1) error with coefficient 0.6 and that follows the following trend:
+\[
+y_t = .2 + .3 * t + .4 * \cos(Bt) + .1 * \sin(Bt) + z_t
+\]
+where $B$ is chosen to make the time series have period 10.
+:::
+
+::: {.exercise #ex:modelfitchapter5}
+Fit a harmonic model to the simulated data from Exercise \@ref(ex:simulationchapter5). 
+
+a. Are the true parameter values within 2 standard errors of the point estimates?
+b. Are the residuals independent? Find the AR(1) estimate of the coefficient and see whether it is close to the 0.6 that you used to create the data.
+:::
+
+
+## Logarithmic Transform
+
+In this section, we talk about taking the log to transform a mulitplicative time series into an additive one, together with an example. 
+
+A time series may follow the generative process 
+
+\[
+y_t = m_t s_t z_t
+\]
+
+rather than the additive model that we were using above. In this case, a common trick is to take the log of everything and model that. We get
+
+\[
+\log y_t = \log m_t + \log s_t + \log z_t
+\]
+
+We can do the same types of things that we have done throughout this chapter on the log versions of the data. Let's look at **simulated data** to see how this works.
+
+We start with the seasonal component. We want the **log** of the seasonal component to be `sin` with period 10. Also, we are not including errors in the seasonal component model, so we don't have any error here.
+
+```{r}
+s <- 10 #seasons of length 10
+B <- 2 * pi / 10 
+st <- exp(.5* sin(B * 1:10))  #seasonal component
+plot(st, type = "l")
+st <- rep(st, 20) #seasonal component of length 200
+plot(st, type = "l")
+```
+
+For the trend, we choose **not** to rescale the time variable, but we want to logs to be linear.
+
+```{r}
+times <- 1:200
+mt <- exp(1 + .02 * times) #log will be linear trend 
+plot(times, log(mt), type = "l")
+plot(times, log(mt) + log(st), type = "l")
+```
+
+The errors are a bit harder to model. We are going to take the log, so we want `log(zt)` to be an AR(1) process. So, we want $z_t = w_t \times z_{t - 1}^\alpha$ so that when we take logs, we get $\log z_t = \log w_t + \alpha \log(z_{t - 1})$. This also means that we need the log of $w_t$ to be a normal random variable. We can simulate from that by using `rlnorm`. `rlnorm` samples from a random variable whose log is normal.
+
+```{r}
+hist(log(rlnorm(10000, 0, 1)), probability = T)
+curve(dnorm(x), add = T, col = 2)
+```
+
+Now we create the errors so that they are multiplicative errors whose logs are AR(1).
+
+```{r}
+set.seed(8) #just to  make sure our errors have significant acf
+wt <- rlnorm(200, 0, 0.1)
+zt <- wt[1]
+for(i in 2:200) zt[i] <- wt[i] * zt[i - 1]^(0.6) #this has a lof that is an AR(1) process for error
+plot(zt, type = "l")
+acf(log(zt))
+```
+
+With all of the pieces in place, we can now create our time series.
+
+```{r}
+yt <- mt * st * zt
+plot(times, yt, type = "l")
+```
+
+One typical characteristic of data of this type is that the errors get larger as the values of $y$ get larger. That is because we have **multiplicative** error, which multiplies some constant around 1 times the value. In this case, the exponential trend of the model is clear, but sometimes it is not so obvious.
+
+In order to model this data, take logs. Since we didn't use `exp(times)` to create the trend, we don't need to take logs of the time variable. We model
+
+\[
+\log(y_t) = \beta_0 + \beta_1 t + \sum_{i = 1}^{s/2} a_i \sin(i B t) + b_i \cos(i B t) + z_t
+\]
+
+```{r}
+dd <- data.frame(yt_trans = log(yt), 
+                 time = times)
+B <- 2 * pi / 10
+for(i in 1:5) {
+  eval(parse(text = paste0("dd$cos", i, " <- cos(i * B * dd$time)")))
+}
+for(i in 1:4) {
+  eval(parse(text = paste0("dd$sin", i, " <- sin(i * B * dd$time)")))
+}
+
+mod <- gls(yt_trans ~ ., data = dd, correlation = corARMA(p = 1))
+summary(mod)
+```
+
+We see that the estimates of the coefficients are good. The true values of the intercept and slope are 1 and 0.02, while the true value of the sin coefficient is 0.5. The values estimated above are 0.96, 0.0203, and 0.48. If we construct confidence intervals for the coefficients, we see that all of the true coefficients are in their 95 percent confidence intervals **except** for the `cos3` coefficient which is zero in the data generative process. With 11 coefficients being estimated, we expect very roughly a 50/50 chance that at least one of the coefficients won't be in it's confidence interval even when everything is working 100 percent as designed.
+
+```{r}
+confint(mod)
+```
+
+::: {.exercise #ex:ezregressionsim}
+In this data, you are to simulate data and model it.
+
+a. Simulate data for $t = 0, \ldots, 100$ that follows the generative process $y_t = 2 + 5 t - 0.1 t^2 + z_t$, where $z_t$ is an AR(1) process $z_t = 0.4 z_{t - 1} + w_t$ and $w_t$ are iid normal random variables with standard deviation 5. 
+b. Use `lm` to fit a quadratic trend to the series. What are the coefficients?
+c. Find a 95 percent confidence interval for the coefficients and comment.
+d. Plot the correlogram of the residuals and comment.
+e. Refit the model using `gls`. Find 95 percent confidence intervals for the coefficients and compare to part c. 
+:::
+
+::: {.exercise #ex:aussiewine}
+Consider the `wine` data set in the `tswrdata` package. This data set gives the wine available for consumption in Australia from 1960 through 2017 in liters.
+
+a. Plot the wine consumption versus time.
+b. Use `lm` to create a linear model of wine consumption on time. 
+c. Find a 95 percent confidence interval for the slope.
+d. Create a correlogram for the residuals of your model. Do the residuals appear correlated? How would this impact the confidence interval from part c?
+e. Re-do your model in part b using `gls` with an AR(1) model for the errors.
+f. Find a 95 percent confidence interval for the slope and compare to c. Comment on which one you believe to be a more appropriate 95 percent confidence interval.
+:::
+
+
