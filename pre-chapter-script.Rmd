@@ -1,0 +1,90 @@
+```{r pre-chapter-script, echo=FALSE}
+#
+# This script needs to run at the beginning of every chapter
+#
+# Include at the start of each chapter with:
+# ```{r child = 'pre-chapter-script.Rmd'}
+# ```
+#
+# Potentially, this could be done with the _bookdown.yml file using:
+#    before_chapter_script: pre-chapter-script.R
+# However, as of Dec 2020 this functionality is broken when using knit-then-merge builds
+# see https://github.com/rstudio/bookdown/issues/1049
+#
+
+# restrict R output width so it won't overflow the PDF page width
+#  - 64 for default Latex book document class
+#  - 72 for krantz
+#
+options(width = 72)
+
+# tidy all source code by default
+# (this fails in a before_chapter_script)
+#
+knitr::opts_chunk$set(tidy = "styler")
+
+#
+# Output hook to wrap error messages which are intentionally displayed
+# They don't get autowrapped by R.
+# (this hook code fails in a before_chapter_script)
+#
+local({
+  hook_old <- knitr::knit_hooks$get("error")  # save the old hook
+  error_too_long_wrapper <- function(x, options) {
+    # wrap x
+    x <- paste(strwrap(x, 76), collapse="\n## ")
+    x <- paste(x, "\n", sep="")
+    # pass the new x to the old hook
+    hook_old(x, options)
+  }
+  knitr::knit_hooks$set(error = error_too_long_wrapper)
+})
+
+# Output hook to wrap Call in summary(mod)
+local({
+  hook_old <- knitr::knit_hooks$get("output")  # save the old hook
+  call_wrapper <- function(x, options) {
+    # wrap x
+    x <- paste(strwrap(x, 76), collapse="\n## ")
+    x <- paste(x, "\n", sep="")
+    # pass the new x to the old hook
+    hook_old(x, options)
+  }
+  knitr::knit_hooks$set(output = call_wrapper)
+})
+
+```
+
+```{r pre-chapter-latex-only, echo=FALSE, include=knitr::is_latex_output()}
+#
+# LaTeX only portion
+#
+
+#
+# Set chapter number for single chapter PDF builds.
+# The Makefile produces the chapterfile, which contains the
+# chapter number it's trying to build.
+#
+local({
+chapterfile <- "_single_chapter_build_number.txt"
+if (file.exists(chapterfile)) {
+  x <- scan(chapterfile, what = list(p=0))
+  if (x$p > 0) {
+    cstring <- paste('\\setcounter{chapter}{',x$p-1,'}',sep='')
+    knitr::asis_output(cstring)
+  }
+}
+})
+
+```
+
+```{r pre-chapter-setup, echo=FALSE}
+#
+# load ggplot and dplyr, needed for (almost) all chapters
+#
+suppressMessages(suppressWarnings(library(ggplot2)))
+suppressMessages(suppressWarnings(library(dplyr)))
+
+set.seed(3850)
+```
+

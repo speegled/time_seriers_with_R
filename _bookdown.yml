@@ -1,0 +1,35 @@
+---
+#
+# Chapters
+#
+rmd_files: [
+  "index.Rmd",
+  "01-tsviz.Rmd",
+  "02-correlation.Rmd",
+  "03-forecasting.Rmd",
+  "04-stochasticmodels.Rmd",
+  "05-regression.Rmd"
+  ]
+
+# Knit-then-Merge (KM) build renders each .Rmd file in its own session
+new_session: yes
+
+# Replaced these because bookdown changed the way they are supported and broke
+# a bunch of functionality.  It's a shame.
+#
+# before_chapter_script: pre-chapter-script.R
+
+# Book styling
+language:
+  ui:
+    chapter_name: "Chapter "
+
+# Build Settings
+output_dir: "_book"
+clean:
+ - _main.md
+ - _main.tex
+ - _main.log
+ - packages.bib
+
+---
