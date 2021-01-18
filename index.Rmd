@@ -27,6 +27,6 @@ classoption: krantz2  # gives 5.5 x 8.5 page area.  Default is krantz1, 4.5 x 7.
 
 # Preface
 
-This book consists of notes written for STAT 4840 at Saint Louis University. The prerequisite for this class is Calculus I and II, and [STAT 3850](https://math.slu.edu/~speegled/_book).
+This book consists of notes written for STAT 4840 at Saint Louis University. The prerequisite for this class is Calculus I and II, and [STAT 3850](https://math.slu.edu/~speegled/_book). We are following the outline of topics in Introductory Time Series with R by Cowpertwait and Metcalfe, and these notes are intended to supplement that text.
 
 Data for this book comes from the R package `tswrdata` which can be installed using `remotes::install_github(repo = "speegled/tswrdata")`. If you do not have `remotes` already installed, you will first need to run `library(packages)`.

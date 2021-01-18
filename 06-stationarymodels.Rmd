@@ -1,0 +1,179 @@
+# Stationary Models {#stationarymodels}
+
+In Chapter \@ref(regression), we modelled trends and seasonality of various time series. The residuals left over after modelling the trend and seasonality then need to be modelled in order to get a satisfactory final model. This leads us to the concept of stationary models. 
+
+::: definition
+A time series is _stationary_ if for every $n$ and $m$, the distribution of $x_{t_1}, \ldots, x_{t_n}$ is the same as the distribution of $x_{t_1 + m}, \ldots, x_{t_n + m}$.
+:::
+
+That is, if we shift the time series by $m$ units, the distribution does not change at all. Some consequences of stationarity are in the following theorem.
+
+::: {.theorem #thm:secondorder}
+If $(x_t)$ is a stationary time series, then 
+
+1. $\mu_t = E[x_t]$ is constant in the sense that it doesn't depend on $t$,
+2. $\sigma_t = {\text {Var}}(x_t)$ is constant, and
+3. the autocovariance ${\text {Cov}}(x_t, x_s)$ only depends on $|t - s|$.
+:::
+
+Time series that have the three properties listed in Theorem \@ref(thm:secondorder) are called second-order stationary. 
+
+## Moving average models {#mam}
+
+A moving average model of order $q$ models a time series via the following pattern 
+
+\[
+x_t = w_t + \beta_1 w_{t - 1} + \cdots + \beta_q w_{t - q}
+\]
+
+for some choice of $\beta_1, \ldots, \beta_q$. Let's start by simulating some MA(1) and MA(2) processes and see what their plots and correlogram plots look like.
+
+```{r}
+xs <- rnorm(200)
+w <- xs[1]
+for(i in 2:100) w[i] <- xs[i] + .5 * xs[i - 1]
+plot(w, type = "l")
+acf(w)
+```
+
+```{r}
+xs <- rnorm(200)
+w <- xs[1]
+w[2] <- xs[2] + .5 * xs[1]
+for(i in 3:200) w[i] <- xs[i] + .5 * xs[i - 1] + .3 * xs[i - 2]
+plot(w, type = "l")
+acf(w)
+```
+
+We can also generate series following this pattern using `arima.sim` as follows.
+
+```{r}
+w <- arima.sim(n = 200, list(ma = c(.5, .3)))
+plot(w)
+acf(w)
+```
+
+As a reminder, an AR(p) process looks very similar to the MA(q) process, but the coefficients are multiplied by the previous terms in the series, and not the white noise process. This is what an AR(2) process looks like with the same coefficients.
+
+```{r}
+w <- arima.sim(n = 200, list(ar = c(.5, .3)))
+plot(w)
+acf(w)
+```
+
+Note that for an MA(q) process, we expect the autocorrelation to be 0 for lags larger than $q$, while that is not the case for an AR(p) process, which can have significant autocorrelation far beyond lag $p$.
+
+We have the following theorem.
+
+::: theorem
+Let $(x_t)$ be an MA(q) process with parameters $\beta_1, \ldots, \beta_q$.  The autocorrelation function for $k \ge 0$ is given by
+\[
+\rho(k) = \begin{cases}
+1&k = 0\\
+\sum_{i = 0}^{q - k} \beta_i \beta_{i + k}/\sum_{i = 0}^q \beta_i^2 &k = 1, \ldots, q\\
+0 & k >q
+\end{cases}
+\]
+where $\beta_0 = 1$.
+:::
+
+In practice when we see correlograms they may not match the autocorrelation function due to random sampling. Recall that 1 in 20 of the sample autocorrelations that are not significant should have values that extend past the dashed line in the acf plot.
+
+## Fitting MA models {#fittingmamodels}
+
+Fitting MA models, i.e. finding the best values for $\beta_1, \ldots, \beta_q$ can be tricky, though the implementation in R is straightforward. Let's look at an example of how we can do it. First we simulate some data.
+
+```{r}
+ss <- arima.sim(200, model = list(ma = c(.6, .4)))
+```
+
+We look at the acf plot to see what we think. This seems consistent with MA(2), so that is how we model it. 
+
+```{r}
+acf(ss)
+```
+
+We are assuming MA(2), so that $ss_t = x_t + \beta_1 x_{t - 1} + \beta_2 x_{t - 2}$ for some choices of $\beta_1$ and $\beta_2$. In general, we would need to estimate the variance of the underlying white noise process $xx_t$, but for simplicity we are assuming that it is known to be 1. We solve the above equation for $x_t$ so that 
+
+\[
+x_t = ss_t - \beta_1 \hat x_{t - 1} + \beta_2 \hat x_{t - 2}.
+\]
+
+Note that when we have the true values of $\beta_1$ and $\beta_2$, the $x_t$ should be pretty good approximations for the original white noise process. 
+We minimize the sum of squareds of the $(x_t)$ in order to estimate $\beta_1$ and $\beta_2$. Let's see how it works. 
+
+```{r}
+beta_1 <- .5 
+beta_2 <- .3
+w <- ss[1]
+w[2] <- ss[2] - beta_1 * w[1]
+for(i in 3:200) w[i] <- ss[i] - beta_1 * w[i - 1] + beta_2 * w[i - 2]
+mean(w^2) #this is the thing we are minimizing
+```
+
+
+```{r}
+sse <- function(beta) {
+  beta_1 <- beta[1]
+  beta_2 <- beta[2]
+  #ss <- ss - mean(ss) uncomment this to match arima call with include.mean = T
+  w <- ss[1]
+  w[2] <- ss[2] - beta_1 * w[1]
+  for(i in 3:200) w[i] <- ss[i] - beta_1 * w[i - 1] - beta_2 * w[i - 2]
+  mean(w^2) #this is the thing we are minimizing
+}
+optim(beta <- c(.5, .4), fn = sse)
+arima(ss, order = c(0, 0, 2), method = "CSS", include.mean = F)
+```
+
+
+::: exercise
+This exercise investigates simulations of MA processes and by hand estimates of the parameters.
+
+a. Simulate data of length 300 that is MA(3) with parameters $beta_0 = .4$, $\beta_1 = .5$ and $\beta_2 = .2$. 
+b. Use the `optim` function as above to estimate the values of $\beta_i$ without subtracting the mean of the data.
+c. Confirm your approach by using `arima` with options `method = "CSS"` and `include.mean = F`. 
+:::
+
+::: exercise
+Consider the following pairs of `acf` and `pacf` plots. Which pair(s) is/are unlikely to have come from a moving average process?
+
+```{r echo = FALSE}
+x1 <- arima.sim(300, model = list(ma = c(.6, .3)))
+old.par <- par(mfrow = c(1, 2))
+acf(x1)
+pacf(x1)
+```
+
+```{r echo = FALSE}
+x2 <- arima.sim(300, model = list(ma = c(.6)))
+old.par <- par(mfrow = c(1, 2))
+acf(x2)
+pacf(x2)
+```
+
+```{r echo = FALSE}
+x3 <- arima.sim(300, model = list(ar = c(.6, .3)))
+old.par <- par(mfrow = c(1, 2))
+acf(x3)
+pacf(x3)
+```
+:::
+
+::: exercise
+Consider the `zar_sd` variable in the `samarket` data set in the `tswrdata` package. 
+
+a. Plot the data versus time. Does there seem to be a trend or seasonality to consider? If so, remove the estimated trend using 
+b. Examine the `acf` and `pacf` plots and indicate whether a moving average model is appropriate for this data. (Note: you will have to remove the missing data at the beginning of the time series.)
+:::
+
+
+
+
+
+
+
+
+
+
+

@@ -8,7 +8,8 @@ rmd_files: [
   "02-correlation.Rmd",
   "03-forecasting.Rmd",
   "04-stochasticmodels.Rmd",
-  "05-regression.Rmd"
+  "05-regression.Rmd",
+  "06-stationarymodels.Rmd"
   ]
 
 # Knit-then-Merge (KM) build renders each .Rmd file in its own session
