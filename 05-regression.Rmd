@@ -645,6 +645,10 @@ We see that the estimates of the coefficients are good. The true values of the i
 confint(mod)
 ```
 
+::: example
+In this example, we look at the `electricity` data set from the `tswrdata` package. It contains the electric consumption in Australia from 
+:::
+
 ::: {.exercise #ex:ezregressionsim}
 In this data, you are to simulate data and model it.
 
@@ -666,4 +670,6 @@ e. Re-do your model in part b using `gls` with an AR(1) model for the errors.
 f. Find a 95 percent confidence interval for the slope and compare to c. Comment on which one you believe to be a more appropriate 95 percent confidence interval.
 :::
 
-
+::: {.exercise #ex:tsastats}
+Consider the 
+:::
