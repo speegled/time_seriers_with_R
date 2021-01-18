@@ -1,0 +1,30 @@
+--- 
+site: bookdown::bookdown_site   # needed for R studio integraion (Build tab)
+
+#
+# Book Metadata
+#
+title: "Time Series with Simulations and R"
+author: "Darrin Speegle"
+date: "`r Sys.Date()`"
+
+   # description field is metadata in the html files that will show up on
+   # facebook, twitter, and other social media.  It does not appear in the book text.
+description: >-
+   Time Series with Simulations and R by Darrin Speegle.
+   This textbook is ideal for a first time series course with only an intro prob/stats
+   course as a prerequisite. 
+   Assumes knowledge from Foundations of Statistics with R by Speegle and Clair.
+   It explores time series through simulations of the main results and models.
+
+# Settings for CRC's krantz.cls
+# (more specifically, Yihui Xie's mod of krantz.cls)
+documentclass: krantz # use 'book' for default book documentclass
+classoption: krantz2  # gives 5.5 x 8.5 page area.  Default is krantz1, 4.5 x 7.5
+
+---
+\mainmatter
+
+# Preface
+
+This book consists of notes written for STAT 4840 at Saint Louis University. The prerequisite for this class is Calculus I and II, and [STAT 3850](https://math.slu.edu/~speegled/_book)
