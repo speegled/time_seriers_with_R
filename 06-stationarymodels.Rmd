@@ -163,11 +163,12 @@ pacf(x3)
 ::: exercise
 Consider the `zar_sd` variable in the `samarket` data set in the `tswrdata` package. 
 
-a. Plot the data versus time. Does there seem to be a trend or seasonality to consider? If so, remove the estimated trend using 
-b. Examine the `acf` and `pacf` plots and indicate whether a moving average model is appropriate for this data. (Note: you will have to remove the missing data at the beginning of the time series.)
+a. Plot the data versus time. Does there seem to be a trend or seasonality to consider? Use `HoltWinters` to model the time series.
+b. Examine the `acf` and `pacf` plots of the residuals. Does the data seem to be adequately explained by the model Holt Winters model?
+c. Fit a MA(1) process to the residuals. Is the constant statistically significant?
 :::
 
-
+## Fitting ARMA models {#fittingarmamodels}
 
 
 
