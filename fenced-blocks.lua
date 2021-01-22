@@ -55,7 +55,8 @@ divstyle = {
   definition = { style = "definition"},
   example = { sequence = "definition", style = "definition"},
   proof = { numbered = false, style = "remark", name = "Proof:" },
-  exercise = { style = "definition", name = "" }
+  exercise = { style = "definition", name = "" },
+  background = { style = "definition"}
 }
 
 --[[
