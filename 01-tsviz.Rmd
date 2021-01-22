@@ -80,6 +80,138 @@ mm %>%
 This is not the best way to find seasonal variation, but even still we see that there appear to be two peaks per year; in the fall and in the spring for global mean temperature. We will see better ways to see seasonality later in this chapter.
 :::
 
+::: example
+In this example, we look at unemployment data from Maine. It can be found in `maine` in the `tswrdata` package.
+
+```{r}
+maine <- tswrdata::maine
+str(maine)
+```
+
+We note that `maine` consists of a single variable, which is the unemployment rate in Maine. If we look at the help page, we see that is monthly data. We can convert the data into a time series, indicating the start date and that it is monthly, as follows. Note how the plot improves.
+
+```{r}
+plot(maine$unemploy)
+maine$unemploy <- ts(maine$unemploy, start = c(1996, 1), frequency = 12)
+plot(maine$unemploy)
+```
+
+There are two R functions that we can use with time series, `aggregate` and `cycle`. The function `aggregate` performs calculations over seasons as defined by frequency. For example, if we want to compute the mean unemployment rate for each year over the time presented in the time series, then we could use
+
+```{r}
+aggregate(maine$unemploy, FUN  = mean)
+```
+
+Another function that we can use is `cycle`. This goes through the time series and assigns seasons to the time series.
+
+```{r}
+cycle(maine$unemploy)
+maine$season <- factor(cycle(maine$unemploy))
+ggplot(maine, aes(season, unemploy)) + 
+  geom_boxplot(outlier.size = -1) + 
+  geom_jitter(height = 0, width = 0.2, alpha = .5)
+```
+:::
+
+## Decomposing time series
+
+In this section, we look at estimating the trend, seasonal and random component of various time series. There are several ways of doing this, but we start with simple things that are easy to understand. We start with some notation and definitions.
+
+::: definition
+One additive decomposition model that we will be considering in this section is given by
+\[
+x_t = m_t + s_t + z_t
+\]
+where $x_t$ is the time series, $m_t$ is the trend, $s_t$ is the seasonal variation and $z_t$ is the random component. Recall that $z_t$ is **not** assumed to be independent in this book!
+
+A multiplicative decomposition model for time series is 
+\[
+x_t = m_t s_t z_t
+\]
+where the components are multiplied together rather than added.
+:::
+
+::: example
+Consider the monthly global temperature data. One way to estimate the trend $m_t$ is to take a weighted average of the nearby values. Since the number of months in each season is even (12), we use the following formula:
+
+\[
+\hat m_t = \frac{\frac 12 x_{t - 6} + x_{t - 5} + \cdots + x_t + \cdots + x_{t + 5} + \frac 12 x_{t + 6}}{12}
+\]
+
+The reason we divide $x_{t - 6}$ and $x_{t + 6}$ by 1/2 is that they each refer to the same month. For example, if $t = 7$ (so that we are in July), then $t - 6 = 1$, which is January, and $t + 6 = 13$, which is also January. We don't want the two Januaries to count twice, so we just average the 2. The R command that does this is `filter` (or `convolve`). The way `filter` takes arguments `x`, which is the data, `filter`, which is the weights that we use for the weighted average of values, and `sides = 2` centers the filter like we want. Note that `filter` is hidden by `dplyr` so we have to specify to R that we want to use `stats::filter` rather than `dplyr::filter`. 
+
+```{r}
+mm <- tswrdata::monthly
+filter <- c(1/24, rep(1/12, 11), 1/24)
+sum(filter) #sums to 1
+mm <- mm %>% 
+  group_by(date) %>% 
+  summarize(temp = mean(mean)) %>% 
+  mutate(trend = stats::filter(temp, filter = filter))
+```
+
+We see that there are missing values at the beginning (and end). That is because our filter tries to average things that extend beyond the beginning (and end) of the time series. There are only a few missing values, but it can be very annoying because many times the most recent values are exactly the ones that you care most about.
+
+Let's visualize it:
+
+```{r}
+ggplot(mm, aes(x = date, y = temp)) + 
+  geom_point(alpha = .1) + 
+  geom_line(mapping = aes(y = trend))
+```
+
+That is still really variable!
+
+Once we have estimated $\hat m_t$, we then estimate $s_t$ by computing
+\[
+\hat s_t = x_t - \hat m_t
+\]
+and **averaging** over all years of observation. In this way, we get a single number for each season that we have.
+
+```{r}
+mm %>% 
+  mutate(season = temp - trend, 
+         month = lubridate::month(date)) %>% 
+  group_by(month) %>% 
+  summarize(season = mean(season, na.rm = T)) %>% 
+  ggplot(aes(x = month, y = season)) + 
+  geom_line()
+  
+```
+
+This corresponds with original thought that there are two peaks per year in mean temperature. Finally, to get the random component, we would compute
+
+\[
+\hat z_t = x_t - \hat m_t - \hat_s_t
+\]
+
+```{r}
+mm <- mm %>% mutate(season = temp - trend, 
+         month = lubridate::month(date)) %>% 
+  group_by(month) %>% 
+  mutate(season = mean(season, na.rm = T)) %>% 
+  mutate(random = temp - trend - season)
+mm %>% 
+  pivot_longer(cols = c(temp, trend, season, random)) %>% 
+  mutate(name = factor(name, levels = c("temp", "trend", "season", "random"))) %>% 
+  ggplot(aes(x = date, y = value)) + 
+  geom_line() + 
+  facet_grid(name~., scales = "free_y")
+```
+
+
+There is a built-in R function that does all of this for us, called `decompose`. It doesn't give exactly the same answers because it centers the season values by subtracting the mean of all of the season values.
+
+```{r}
+mod <- decompose(ts(mm$temp, start = c(1880, 1), frequency = 12))
+mod$seasonal[1:12]
+mm$season[1:12]
+mod$seasonal[1:12] - mean(mod$seasonal[1:12]) #these match perfectly
+plot(mod)
+```
+:::
+
+
 
 ## Exercises
 
