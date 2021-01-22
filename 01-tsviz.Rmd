@@ -1,1 +1,90 @@
 # Visualizing and Examples of Time Series
+
+```{r child = 'pre-chapter-script.Rmd'}
+```
+
+In this chapter, we discuss some basics of time series. A time series is a collection of data points that include a time component. The time component can either be regular, such as every hour or every day, or it can be irregular. The data can either be aggregated (such as the number of iPhones sold over in one month) or it can be sampled (such as the closing price of a stock). In either case, it may be important that the time period of aggregation or sampling be short enough to detect volatility or deviations from trends. 
+
+Our point of view in this class is that we will want to create models that describe the time series. Typical components of a model will include the **trend** of the data over time, the **seasonality** of the data, and the **random component** of the data. One important difference between time series and many other types of data is that time series data is usually **not** independent. For example, knowledge of the value of the time series at one time interval gives us probabilistic information about the value of the time series at nearby time intervals. If you knew that the high temperature on January 20, 2022 in St Louis is going to be 3 degrees Fahrenheit, you would probably guess that the high temperature on January 21 2022 will also be below normal for that time of year.
+
+## Examples
+
+In this section, we introduce some of the examples that we will be working with thoughout the book. 
+
+::: example
+Our first example is closing stock market prices. The package `quantmod` allows you to download prices of stocks, as long as you know the abbreviation to look for. Let's see how to use it.
+
+```{r eval=FALSE}
+library(quantmod)
+getSymbols("AAPL", from = "2016-01-01", to = "2021-01-01", warnings = FALSE)
+```
+
+```{r echo=FALSE}
+library(quantmod)
+load("data/apple.rda")
+```
+
+
+The previous command creates an object called `AAPL` which contains the desired information. Let's look at it.
+
+```{r}
+head(AAPL)
+```
+
+Most of the variable names are self-explanatory, but `AAPL.Adjusted` is the adjusted closing price of Apple, taking into account stock splits and dividends. This is the value that we will most often work with. To plot the adjusted closing price, we use the base R command `plot`. 
+
+```{r}
+plot(AAPL$AAPL.Adjusted)
+```
+
+If we just eyeball this plot, it seems as if there is an upward trend in the price of Apple over the time period. If we were to subtract the overall trend, then the leftover error would not be independent. Days on which the stock is below the overall trend seem to be followed by more days on which the stock is below the trend, for example.  We will continue looking at this below.
+:::
+
+::: example
+In this example, we look at temperature data. Much of the data in this book will be in the `tswrdata` package. You can install the package by typing `remotes::install_github(repo = "speegled/tswrdata")`. If you do not have the `remotes` package installed, you will first have to type `library(remotes)`. 
+
+The data set we are interested in is the `monthly` global mean temperature data set. It can be loaded as follows.
+
+```{r}
+mm <- tswrdata::monthly
+head(mm)
+summary(mm)
+```
+
+This data gives the mean global temperature for each month from January 6, 1880 through December 6, 2016. The value is in terms of difference from the approximate series mean.
+
+This data set is not in the form of a time series, so we will use `ggplot` to visualize. But first, we average the two different methods for creating the mean global temperature for the month.
+
+```{r}
+mm %>% 
+  group_by(date) %>% 
+  summarize(temp = mean(mean)) %>% 
+  ggplot(aes(x = date, y = temp)) + 
+    geom_line()
+```
+
+This time series appears to have a trend as well as possibly a seasonal component. Let's average all of the monthly data and see if there appear to be differences. 
+
+```{r}
+mm %>% 
+  group_by(date) %>% 
+  summarize(temp = mean(mean)) %>% 
+  mutate(month = lubridate::month(date)) %>% 
+  group_by(month) %>% 
+  summarize(temp = mean(temp)) %>% 
+  ggplot(aes(x = factor(month), y = temp)) + 
+    geom_col() + 
+  scale_x_discrete()
+```
+
+This is not the best way to find seasonal variation, but even still we see that there appear to be two peaks per year; in the fall and in the spring for global mean temperature. We will see better ways to see seasonality later in this chapter.
+:::
+
+
+## Exercises
+
+::: exercise
+Consider the `stltemp` data in the `tswrdata` package. Plot the average daily temperature from the Eads Bridge Station from January 1, 1900 through January 1, 2000. 
+
+Decompose the time series into a trend, season and random component and plot each of the three components.
+:::
