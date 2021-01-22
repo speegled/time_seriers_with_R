@@ -1,1 +1,191 @@
 # Forecasting
+
+In this chapter, we discuss three methods for forecasting time series. 
+
+1. Find a lead variable. That is, find a variable that is highly correlated with the variable that you wish to forecast after a lag. An example is that new housing construction permits are a lead variable for variables related to house construction, such as home construction materials.
+2. Use previous patterns from similar time series to inform your forecast for the time series under consideration. The example we will consider is the Bass model, which is a model for the number of units sold of a new consumer item.
+3. Extrapolate from current trends in the time series. We will consider exponential smoothing and the Holt-Winters method.
+
+## Lead Variables
+
+Consider the `housing` data set in the `tswrdata` package. This consists of the number of houses approved for construction together with dollars spent on housing construction for that quarter, adjusted for inflation to 2004 Australian dollars. 
+
+We start by plotting approvals and activity on the same plot.
+
+```{r}
+hh <- tswrdata::housing
+plot(hh$approvals, type = "l", ylim = c(min(hh$activity), max(hh$approvals)))
+points(hh$activity, type = "l", lty = 2)
+```
+
+It appears as though activity lags approvals by a quarter or so, though it is hard to see exactly. One way we can investigate the relatinship is through the _cross-correlation_ of the two variables. 
+
+::: definition
+The cross-correlation function at lag $k$ of two stationary time series is defined by 
+\[
+E[(x_{t + k} - \mu_x)(y_t - \mu_y)]
+\]
+:::
+
+Here, as before, we are using stationary loosely to mean that the distribution of the time series does not depend on the time. 
+
+This is similar to the autocorrelation function that we saw in the previous chapter. 
+
+```{r}
+ccf(hh$activity, hh$approvals)
+```
+
+Looking at the cross correlation plot, we see that there is a strong correlation between activity and approvals. It appears that the maximum correlation is at lag either 1 or 2 quarters, while there is significant correlation for several positive lags. This indicates that housing approvals are a lead variable for housing activity. However, it is not clear that the two time series that we started with were **stationary**. If the time series has a trend or seasonal component, then that will tend to dominate the cross correlation function. Sometimes that is what we want to do, but other times we are really interested in whether one variable is correlated with the **random** component of the other variable at some lag in order to improve predictions.
+
+Therefore, let's decompose the two time series to remove trends and seasonal effects and re-do the cross correlation.
+
+```{r}
+activity <- ts(hh$activity, start = c(1996, 1), frequency = 4)
+approvals <- ts(hh$approvals, start = c(1996, 1), frequency = 4)
+activity_mod <- decompose(activity)
+approvals_mod <- decompose(approvals)
+ccf(activity_mod$random[-c(1, 2, 42, 43)], 
+    approvals_mod$random[-c(1,2,42,43)], 
+    main = "ccf of activity and approvals")
+```
+
+This is a more realistic cross correlation function. It shows that the **random** component of the decomposition of housing activity is correlated with housing approvals from 1 and/or 2 quarters prior. 
+
+## Bass Model
+
+The Bass model, according to Introductory Time Series with R by Cowpertwait and Metcalfe, is a "mathematical model which quantifies the theory of adoptin and diffusion of a new product by society." In this section, we are going to learn more about the Bass model and test it out on Blackberry sales figures. Let's go!
+
+The Bass model is for the number of people $N_t$ who have bought the product under consideration at time $t$. A first thought would be to assume that the **change** in $N_t$ is proportional to the total number of people $m$ who are going to buy the product but haven't yet. (The change in $N_t$ is the number of people who buy the product in the time period $[t, t+1]$.) We write this as $p(m - N_t)$. These are the people who are initially interested in the product. 
+
+Another group of people will also eventually buy the product. These are people who are influenced by seeing their friends or other people with the product. We model this as $(q N_t/m) (m - N_t)$. We can think of $q N_t/m$ as a time-varying proportion of people who will eventually by the product. As $N_t \to m$, we see that this value eventually becomes exactly $q$. In other words, this part starts by contributing nothing to the change in ownership but ends up contributing $q(m - N_t)$ each period.
+
+In other words, we have 
+\[
+N_{t + 1} - N_t = p(m -N_t) + \bigl(q N_t/m \big)(m - N_t)
+\]
+
+In the Bass model, there are three parameters: $p$, $m$ and $q$.  We can solve for $N_t$ in the above equation, and get
+
+\[
+N_t = m\frac{1 - e^{-(p + q)t}}{1 + (q/p)e^{-(p + q)t}}.
+\]
+
+It is not very easy to see why this is true, so let's consider the a related continuous time problem. 
+
+Assume that the time for a person to eventually buy the product has a probability density function given by $f(t)$, which depends on parameters $p$ and $q$. A plot of sales per time can then be obtained by multiplying $f(t)$ by $m$, the total number of people who will eventually buy the product. 
+
+::: background
+
+For a continuous random variable $X$ with pdf $f$, we define the _hazard function_ $h(t) = \frac{f(t)}{1 - F(t)}$. If $X$ denotes the time until a person buys a product, $h(t) \Delta t$ is the probability that a person who has not yet bought the item at time $t$ will buy it in the time interval $[t, t + \Delta t}]$, at least for small values of $\Delta t$. If $X$ is the time until a person gets sick from a disease, then $h(t) \Delta t$ denotes the probability of getting sick "at time $t$" for people who have not yet gotten sick.
+
+Let's look at some examples. If $X$ is uniform on the interval $[0, 1]$, this means that the time until a person buys the object is uniform between 0 and 1. Let's suppose that at time 1/2, the person has not yet bought the object. Let $Y$ be the time they buy the object given this new information. We have
+
+\[
+P(Y \le y) = \begin{cases}
+0& y \le 1/2\\
+P(X \le y|X \ge 1/2) & 1/2 \le y \le 1\\
+1& y > 1
+\end{cases}
+\]
+
+We compute $P(X \le y|X \ge 1/2) = P(1/2 \le X \le y)/P(X \ge 1/2) = \frac{y - 1/2}{1/2} = 2y - 1$. This **isn't** the hazard function. The hazard function gives the probability that the person will buy the object close to time $t$ given that they haven't yet bought it at time $t$. To compute that, we need to compute 
+
+\begin{align*}
+P(X \le t + \Delta t|X \ge t) &= \frac{P(t \le X \le t + \Delta t)}{1 - F(t)} \\
+&= \Delta t \frac{F(t + \Delta t) - F(t)}{\Delta t}{1}{1 - F(t)} \\
+&\approx \Delta t \frac{f(t)}{1 - F(t)},
+\end{align*}
+where in the last line we have used that when $\Delta t$ is small, $\frac{F(t + \Delta t) - F(t)}{\Delta t}$ is approximately the derivative of $F$ which is $f(t)$.
+
+
+Let's compare that to the hazard function. Since $X$ is uniform, $f(t) = 1$ and $F(t) = t$, so 
+
+\[
+h(t) = \frac{1}{1 - t}
+\]
+
+For example, then, the probability that the person will buy the product between time $t = 0.9$ and time $t = 0.901$ is approximately $.001 \times \frac{1}{1 - .9} = .01$. It may be easier to think of this in terms of relative likelihoods. Since $h(.9) = 10$ and $h(0) = 1$, a person who has not yet bought at time $t = 0.9$ is 10 times more likely to buy the product in a short time span than the person at time 0. 
+:::
+
+
+The Bass model is most easily understood in terms of the hazard function. The Bass model says that there are coefficients $p$ and $q$ such that
+
+\[
+h(t) = p + qF(t),
+\]
+
+where again $F$ is the cumulative probability of having but one of the items. If we plug this in to the definition of hazard function, we get 
+
+\[
+p + qF(t) = \frac{f(t)}{1 - F(t)}.
+\]
+
+This is a differential equation that we can solve for $F(t)$ and obtain with some effort $F(t) = \frac{1 - e^{-(p + q)t}}{1 + (q/p)e^{-(p + q)t}}$. If we take the derivative and multiply by $m$, this gives us the sales per unit time. 
+
+\[
+S(t) = \frac{m(p + q)^2e^{-(p + q)t}}{p\bigl(1 + (q/p)e^{-(p + q)t}\bigr)^2}
+\]
+
+This is the equation that we will use to estimate $m$, $p$ and $q$ from data.
+
+::: example
+Let's consider the `blackberry` data set in the `tswrdata` package. This gives the quarter, year and sales data for handheld and table blackberry devices. 
+
+```{r}
+bb <- tswrdata::blackberry
+plot(bb$handheld, type = "l")
+```
+
+The cumulative sales of blackberry devices is plotted below.
+
+```{r}
+plot(cumsum(bb$handheld), type = "l")
+```
+
+Close to 250 million were sold altogether. Our goal is to find $p$, $q$ and $m$ and see how well it matches the curve.  The way we will do it is with the `nls` function in R. This function finds the values of the parameters that minimize the least squares of the error estimates, similar to what `lm` does, but it doesn't need to be a linear model.
+
+However, we do need to provide `nls` with some reasonable guesses for the parameters. Let's plot a few values of the Bass curve on top of our data and see if we can find one that is at least sort of close. After trying a few values, we see that $p = .001$, $q = .2$ and $m = 250$ works pretty well.
+
+```{r}
+bass <- function(p, q, m, x) {
+  (m*(p + q)^2 * exp(-(p + q) * x))/(p * (1 + (q/p) * exp(-(p + q)* x))^2)
+}
+plot(bb$handheld, type = "l")
+curve(bass(.1, .2, 200, x), add = T, col = 1)
+curve(bass(.05, .2, 200, x), add = T, col = 2)
+curve(bass(.001, .2, 250, x), add = T, col = 3)
+```
+
+
+```{r}
+bb$time <- 1:nrow(bb)
+mod <- nls(handheld ~ m * (p + q)^2 * exp(-(p + q) * time)/(p*(1 + (q/p)* exp(-(p + q)* time))^2),
+    data = bb,
+    start = list(p = .001, q = .2, m = 250))
+a <- coefficients(mod)
+plot(bb$handheld, type = "l")
+curve(bass(a[1], a[2], a[3], x), add = T, col = 4)
+```
+
+This is not a bad fit!
+:::
+
+## Exponential Smoothing
+
+## Holt Winters Method
+
+## Exercises
+
+::: {.exercise #ex:hazardfunction}
+Suppose the time to purchase $X$ is an exponential random variable with rate $\lambda = 2$. 
+
+a. Find the hazard function for the time of purchase.
+b. Exponential random variables have the "memoryless property." Explain how your answer above can be interpreted as a memoryless property.
+:::
+
+::: exercise
+Consider the `blackberry` data in the `tswrdata` package. Estimate the values of $p, q$ and $m$ in the Bass model for number of handheld devices sold using only the first 20 data points and plot the resulting Bass curve on top of the data. 
+
+a. Comment on how well the model fits all of the data.
+b. How many blackberries does this model estimate will be sold overall?
+:::
