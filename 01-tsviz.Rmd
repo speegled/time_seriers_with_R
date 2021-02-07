@@ -21,7 +21,7 @@ getSymbols("AAPL", from = "2016-01-01", to = "2021-01-01", warnings = FALSE)
 
 ```{r echo=FALSE, warning=FALSE, message=FALSE}
 library(quantmod)
-load("data/apple.rda")
+load("/Users/speegled/Documents/projects/R_projects/time_series_with_R/data/apple.rda")
 ```
 
 
