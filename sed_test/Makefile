@@ -45,6 +45,23 @@ ifndef chapter
 # Full book build
 #
 
+solutions:
+	cp ../*.Rmd ./
+	cp ../_bookdown.yml ./
+	cp ../_output.yml ./
+	cp ../fenced-blocks.lua ./
+	cp ../style.css ./
+	Rscript extract_solutions.R
+	Rscript -e "bookdown::render_book('sed_test/index.Rmd', 'bookdown::gitbook', output_dir = '_solutions')"
+	rm *.Rmd
+	rm _bookdown.yml
+	rm style.css
+	rm _output.yml
+	rm fenced-blocks.lua
+	rm _main.rds
+	rm _solutions/*.md
+	cp -a _solutions ../
+
 html: 
 	cp ../*.Rmd ./
 	cp ../_bookdown.yml ./

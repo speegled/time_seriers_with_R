@@ -7,7 +7,10 @@ data/*
 *.Rproj
 sed_test/_book/*
 sed_test/_bookdown_files/*
+sed_test/_solutions/*
+_solutions/*
 other_r_code/*
+_bookPDF/*
 
 # History files
 .Rhistory
