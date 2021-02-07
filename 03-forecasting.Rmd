@@ -172,6 +172,110 @@ This is not a bad fit!
 
 ## Exponential Smoothing
 
+In this section, we assume that we have a time series for which any trend and seasonal patterns have been removed. The mean of the time series may not be stationary (that is, it may depend on time), but it does so in a way that seems random and is not explained by trend or seasonal patterns. Our model is 
+
+\[
+x_t = \mu_t + z_t
+\]
+
+where $x_t$ is the observation, $\mu_t$ is the mean of the process at time $t$ and $z_t$ is a random error term that has mean 0 and standard deviation $\sigma$.
+
+We estimate the mean at time $t$ by taking a weighted average of the estimate of the mean at time $t - 1$ and the value of the time series at time $t$. Naturally, when we only have one observation at time $t = 1$, we estimate the mean at time 1 $\hat \mu_1 = x_1$. For $t > 1$, we choose $0 < \alpha < 1$ and estimate $\hat \mu_t = (1 - \alpha) \hat \mu_{t - 1} + \alpha x_t.$
+
+The value of $\alpha$ is a parameter that we need to decide on for our model. Values that are close to 0 indicate that the mean canges very little from time $t - 1$ to $t = 1$, and we would use this if we think that $\sigma$ is larger or  much larger than the change of mean over a time period of 1. When $\alpha$ is close to 1, this means that we are choosing the estimate of the current mean to be close to the current value of the time series. We use this when we expect the mean to change a lot in one time unit relative to $\sigma$. A common compromise value is $\alpha = .2$, or we can choose $\alpha$ that minimizes the one step ahead sum of squared error, see below.
+
+:::theorem
+If $x_t$ is a time series with infinite burn-in and we estimate the mean $\hat \mu_t$ using exponential smoothing, then
+\[
+\hat \mu_t = \sum_{i = 0}^\infty (1 - \alpha)^i \alpha x_{t - i}
+\]
+:::
+
+In practice we do not have infinite burn-in, but when the burn-in is long relative to the size of $\alpha$, then we can estimate $\hat \mu_t = \sum_{i = 0}^t (1 - \alpha)^i \alpha x_{t  - i}$.
+
+::: example
+Consider the `motororg` data in the `tswrdata` package. This gives the number of complaints that a motor organization received from 1996 through 1999. We begin by plotting it.
+
+```{r}
+motor <- tswrdata::motororg
+plot(motor$complaints, type = "l")
+```
+
+There doesn't appear to be any obvious seasonal component to the data. Let's estimate the trend using exponential smoothing with $\alpha = 0.2$.
+
+```{r}
+x <- motor$complaints
+mu <- x[1]
+alpha <- .2
+for(i in 2:48) mu[i] <- (1 - alpha) * mu[i - 1] + alpha * x[i]
+plot(x)
+points(mu, type = "l")
+```
+:::
+
+If we want to "forecast" future values of the time series based on the current value $x_t$, we forecast as follows:
+
+\[
+\hat x_{t + k|t} = \hat \mu_t
+\]
+
+That is, our forecast for all future values is our best estimate for the current mean value. This is because we are assuming that there is no trend that we can understand, and any change in the mean value is random and unpredictable by us.
+
+If we want to choose $\alpha$ dynamically based on the data, then we can do the following. For each $\alpha$, we compute the sequence $\hat \mu_t$, which is going to depend on $\alpha$. At each $t$, the **error** in the forecast $\hat x_{t + 1|t}$ is $\hat x_{t + 1} - \hat \mu_t$, so we can find the $\alpha$ that minimizes the sum of squared errors of the plus one forecasts. That is, we want to minimize
+
+\[
+\sum (\hat x_{t + 1} - \hat \mu_t)^2
+\]
+
+where $\hat \mu_t$ is computed as above, and depends on $\alpha$.
+
+```{r}
+ss1pe <- function(alpha) {
+  mu <- x[1]
+  for(i in 2:48) mu[i] <- (1 - alpha) * mu[i - 1] + alpha * x[i]
+  sum((x[2:48] - mu[1:47])^2)
+}
+optimize(f = ss1pe, lower = 0, upper = 1)
+ss1pe(.2)
+```
+
+The optimized $\alpha$ is 0.1429622, which gives a slightly different trend line in the plot, see the red line below as compared to the black line, which is $\alpha = 0.2$.
+
+```{r echo=FALSE}
+x <- motor$complaints
+mu <- x[1]
+alpha1 <- .2
+alpha2 <- 0.1429622
+mu2 <- x[1]
+for(i in 2:48){
+   mu[i] <- (1 - alpha) * mu[i - 1] + alpha * x[i]
+   mu2[i] <- (1 - alpha2) * mu2[i - 1] + alpha2 * x[i]
+}
+plot(x)
+points(mu, type = "l")
+points(mu2, type = "l", col = 2)
+```
+
+The R function that implements exponential smoothing (and more) is `HoltWinters`. 
+
+```{r}
+mod <- HoltWinters(x = motor$complaints, beta = F, gamma = F)
+mod$alpha #matches what we got above
+fitted(mod)[,2] #these are the estimates for the mean
+mod
+```
+
+The default is that `HoltWinters` estimates $\alpha$ from the data, as we did above. We can also supply a value for $\alpha$, The parameters $\beta$ and $\gamma$ will be explained in the next section. For exponential smoothing, we set them equal to `FALSE`.
+
+```{r}
+mod_point2 <- HoltWinters(x = motor$complaints, alpha = 0.2, beta = F, gamma = F)
+fitted(mod_point2)[,2] #this match with the values we computed above
+head(mu)
+```
+
+
+
+
 ## Holt Winters Method
 
 ## Exercises

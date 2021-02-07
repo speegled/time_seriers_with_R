@@ -19,7 +19,7 @@ library(quantmod)
 getSymbols("AAPL", from = "2016-01-01", to = "2021-01-01", warnings = FALSE)
 ```
 
-```{r echo=FALSE}
+```{r echo=FALSE, warning=FALSE, message=FALSE}
 library(quantmod)
 load("data/apple.rda")
 ```
@@ -131,7 +131,7 @@ x_t = m_t s_t z_t
 where the components are multiplied together rather than added.
 :::
 
-::: example
+::: {.example #exm:decomposeexample}
 Consider the monthly global temperature data. One way to estimate the trend $m_t$ is to take a weighted average of the nearby values. Since the number of months in each season is even (12), we use the following formula:
 
 \[
@@ -190,7 +190,10 @@ mm <- mm %>% mutate(season = temp - trend,
          month = lubridate::month(date)) %>% 
   group_by(month) %>% 
   mutate(season = mean(season, na.rm = T)) %>% 
-  mutate(random = temp - trend - season)
+  mutate(random = temp - trend - season) %>% 
+  ungroup()
+
+library(tidyr) #for pivot_longer
 mm %>% 
   pivot_longer(cols = c(temp, trend, season, random)) %>% 
   mutate(name = factor(name, levels = c("temp", "trend", "season", "random"))) %>% 
@@ -211,12 +214,59 @@ plot(mod)
 ```
 :::
 
+It is also possible to use different filters than the default in `decompose`. The default filter simply averages all of the values in the season that is closest to the current value. Its primary use is for removing seasonal variation in a time series. One downside is the sharp cut-offs at the ends of the filter, so that a value either contributes quite a bit to the moving average, or it contributes nothing. 
+
+An alternative is to use the coefficients in the expansion of $\bigl(\frac 12x + \frac 12y\bigr)^{2q}$. For example, when $q = 1$, we get coefficients $(1/4, 1/2, 1/4)$, which corresponds to $\frac 14 x^2 + \frac 12 xy + \frac 14 y^2$. The general form for the coefficients is
+
+\[
+\frac 1{2^{2q}} {2q \choose k} \qquad 0 \le k \le 2q
+\]
+
+Let's see what the trend of Apple stock would look like if we use this filter. For some purposes, it is easier to have the stock price in tidy format rather than from `quantmod`. To do this, we use `tidyquant`, which can be installed via `devtools::install_github("business-science/tidyquant")`
+
+```{r}
+AAPL <- tidyquant::tq_get("AAPL")
+q <- 12 #this is 2q
+AAPL %>% 
+  mutate(trend = stats::filter(adjusted, filter = choose(q, 0:q)/2^(q), sides = 2)) %>% 
+  ggplot(aes(x = date)) + 
+    geom_point(mapping = aes(y = adjusted), color = "pink") +
+   geom_line(mapping = aes(y = trend), color = "red")
+```
+
+```{r echo = FALSE, eval = FALSE}
+load("data/tidyapple.rda")
+q <- 12 #this is 2q
+AAPL %>% 
+  mutate(trend = stats::filter(adjusted, filter = choose(q, 0:q)/2^(q), sides = 2)) %>% 
+  ggplot(aes(x = date)) + 
+    geom_point(mapping = aes(y = adjusted), color = "pink") +
+   geom_line(mapping = aes(y = trend), color = "red")
+```
+
+::: tryit
+Change the value of $q$ in the above code and see how it affects the plot. Which value do you like the best?
+:::
 
 
 ## Exercises
 
 ::: exercise
-Consider the `stltemp` data in the `tswrdata` package. Plot the average daily temperature from the Eads Bridge Station from January 1, 1900 through January 1, 2000. 
-
-Decompose the time series into a trend, season and random component and plot each of the three components.
+Consider the `blackberry` data in the `tswrdata` package. Create an additive decomposition into trend, season and random components of the number of units of handeld blackberries sold using 4 cycles per season. Plot it and comment on the random component. 
 :::
+
+::: exercise
+Consider the unemployment data `maine` in the `tswrdata` package. Create a plot using `ggplot` of the unemployment, trend, seasonal and random components as was done in Example \@ref(exm:decomposeexample).
+:::
+
+
+::: exercise
+Consider the `stltemp` data in the `tswrdata` package. Plot the maximum temperature from Lambert Airport Station from January 1, 1980 through December 31, 1999. 
+
+Decompose the time series into a trend, season and random component and plot each of the three components. Use a seasonal component of 365 days.
+:::
+
+::: exercise
+Consider the `vaccines` data in the `tswrdata` package. Create a multiplicative decomposition into trend, season and random components of the number of doses of vaccine given in missouri. Plot it and comment. 
+:::
+

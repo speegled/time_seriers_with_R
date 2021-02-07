@@ -1,1 +1,552 @@
 # Correlation
+
+```{r child = 'pre-chapter-script.Rmd'} 
+```
+
+As was mentioned in the preface, one key aspect of time series that needs to be identified and discussed is the lack of independence. In a time series, if one value is less than expected, then often following values will more likely be less than expected as well. One question you should have is this: how long until the effect of having one value less than expected wears off? That is, if we were to throw out the next 10 observations, would the 11th observation still probably be less than expected? This is the kind of question we study in this chapter.
+
+## Expectation
+
+In order to study correlation, we first need to carefully define it. Recall the following definition of expected value.
+
+::: definition
+Let $X$ be a random variable. The expected value of $X$, $E[X]$ is given by 
+\[
+E[X] = \begin{cases}
+\sum x p(x)& X\, {\rm discrete}\\
+\int x f(x)\, dx & X \, {\rm continuous}
+\end{cases}
+\]
+:::
+
+The intuitive idea of expected value is that if we sample from the distribution repeatedly, then in the long term the average of the values will be the expected value. The expected value of $X$ is also sometimes referred to as the **mean** of $X$ or the **population mean**.  
+
+If you have two random variables, $X$ and $Y$, then we want to think about sampling from $X$ and $Y$ as pairs of values. The covariance of $X$ and $Y$ is given by 
+
+\[
+{\text {Cov}}(X, Y) = E[(X - \mu_X)(Y - \mu_Y)]
+\]
+
+The covariance gives a sort of measure of the dependence between $X$ and $Y$ in the following sense. Notice that $(X - \mu_X)(Y - \mu_Y)$ is positive when ($X > \mu_X$ and $Y > \mu_Y$) or when ($X < \mu_X$ and $Y < \mu_Y$). This means that the covariance is positive when increasing values of $X$ are associated with increasing values of $Y$, and is negative when increasing values of $X$ are associated with decreasing values of $Y$. Let's look at some examples.
+
+```{r}
+x <- runif(30)
+y <- 2 * x + rnorm(30, 0, .5)
+plot(x, y)
+abline(h = mean(y), v = mean(x), lty = 2)
+```
+
+Here, we see that more values are in the top-right and bottom-left quadrants of the plot than in the other two, which also corresponds to "increasing values of x are associated with increasing values of y." Therefore, we expect the covariance to be positive, which it is.
+
+```{r}
+cov(x, y)
+```
+
+The `cov` function computes the sample covariance, which is an estimate of the true covariance between $X$ and $Y$. We usually will not know the true covariance, and we will be estimating it through `cov`. But, how does `cov` work? Well, let's suppose we have data $x_1, \ldots, x_n$ and $y_1, \ldots, y_n$. We estimate $\mu_Y = \overline{y}$ and $\mu_X = \overline{x}$. Our estimate for the probability of obtaining the pair $(x_i, y_i)$ is 1/n, since there are $n$ data points. We get as our first guess:
+
+\begin{align*}
+\widehat {\text {Cov}}(X, Y) &= \sum_{i = 1}^n p(x_i, y_i) (x_i - \overline{x})(y_i - \overline{y})\\
+\frac 1n \sum_{i = 1}^n (x_i - \overline{x})(y_i - \overline{y})
+\end{align*}
+
+Based on the rules of thumb developed in MATH/STAT 3850, this is probably going to be a **biased** estimator for the true covariance. Let's run some simulations to check it out and see what the correction term should be. We assume that $X$ is chosen according to a beta distribution on $[0, 1]$ with parameters 2 and 1, and then that $Y$ is chosen uniformly on $[0, X]$. Clearly, $X$ and $Y$ are **dependent**, because if you know $X = 1/2$, then you know $Y \le 1/2$. Trust me when I tell you that the true covariance of $X$ and $Y$ is 1/36. Let's take a sample of size 10 and compute the covariance and see whether on average it is 1/36.
+
+```{r}
+sim_data <- replicate(10000, {
+  x <- rbeta(10, 2, 1)
+  y <- runif(10, 0, x)
+  meanx <- mean(x)
+  meany <- mean(y)
+  1/10 * sum((x - meanx)*(y - meany))
+  #cov(x, y)
+})
+mean(sim_data)
+1/36
+```
+
+If you run the code above several times, you will see that the mean of `sim_data` is consistently less than 1/36. That is what we mean when we say that we have a **biased** estimator for something. It means that if we repeat the experiment over and over and take the average value of the estimate, then the average value will consistently either underestimate or overestimate the true value!
+
+To get an **unbiased** estimator, we need to divide by $n - 1$ rather than by $n$.
+
+```{r}
+sim_data <- replicate(10000, {
+  x <- rbeta(10, 2, 1)
+  y <- runif(10, 0, x)
+  meanx <- mean(x)
+  meany <- mean(y)
+  meanx <- mean(x)
+  meany <- mean(y)
+  1/9 * sum((x - meanx)*(y - meany))
+})
+mean(sim_data)
+1/36
+```
+
+If you run the above several times, you will see that the mean of `sim_data` is close to the true value, and does not consistently under nor over estimate the true value. We can compute the estimated covariance (with $n - 1$ in the denominator) using the R function `cov`.
+
+::: tryit
+Look at the following two plots and decide whether the covariance is positive or negative.
+
+```{r echo=FALSE}
+x <- runif(30)
+y <- 2 * x + rnorm(30, 0, .5)
+plot(x, y)
+abline(h = mean(y), v = mean(x), lty = 2)
+```
+
+```{r echo=FALSE}
+x <- runif(30)
+y <- -2 * x + rnorm(30, 0, .5)
+plot(x, y)
+abline(h = mean(y), v = mean(x), lty = 2)
+```
+:::
+
+One downside of covariance is that it isn't scale independent. That means that if I multiply both $X$ and $Y$ by 2, the covariance changes. To see why, let's look at the definition of covariance and note that multiplying $X$ by 2 increases the mean by 2. So,
+
+\begin{align*}
+{\text {Cov}}(2X, 2Y) &= E[(2X - 2\mu_X)(2Y - 2\mu_Y)]\\
+&= 4E[(X - \mu_X)(Y - \mu_Y)] = 4 {\text {Cov}}(X, Y)
+\end{align*}
+
+::: tryit
+Create samples from any $X$ and $Y$ and compare `cov(x, y)` with `cov(2*x, 2*y)`. Is the second number four times the first one? (Hint: your samples from $X$ and $Y$ should be the same length.)
+:::
+
+More generally, we have the following theorem about the covariance of the linear combination of random variables. We state the theorem for 2 random variables, but it is also true for arbitrary finite sums.
+
+::: {.theorem #thm:linearcov}
+Let $X_1, X_2, Y_1, Y_2$ be random variables and let $a_1, a_2, b_1, b_2$ be constants. Then
+\[
+{\text {Cov}}(a_1X_1 + a_2 X_2, b_1 Y_1 + b_2 Y_2) = \sum a_i b_j {\text {Cov}}(X_i, Y_j)
+\]
+:::
+
+::: example
+Let $X, Y, Z$ be normal random variables with mean 0 and standard deviation 1. Find ${\text{Cov}}(X + Y, Y + Z)$.
+
+First, we estimate it via simulation. We take a large sample from $X$ $Y$ and $Z$ separately, then compute the sample covariance.
+
+```{r}
+x <- rnorm(10000)
+y <- rnorm(10000)
+z <- rnorm(10000)
+cov(x + y, y + z)
+```
+
+Repeating this a few times, we see that the covariance is about 1. Now, we compute the exact value using Theorem \@ref(thm:linearcov). We have:
+
+\begin{align*}
+{\text {Cov}}(X + Y, Y + Z) &= {\text {Cov}}(X, Y) +  {\text {Cov}}(X, Z) +  {\text {Cov}}(Y Y) +  {\text {Cov}}(Y, Z)\\
+&=  {\text {Cov}}(Y, Y) \\
+&= E[Y^2] - \mu_Y^2 = {\text {Var}}(Y) = 1
+\end{align*}
+:::
+
+
+
+At the same time, however, the dependence of $X$ on $Y$ has not changed just because we multiply both numbers by 2. Another way to think of this is that covariance should have **units** attached to it. To get a measurement of dependence that is independent of scale, we divide by the standard deviation of $X$ and $Y$.
+
+::: definition
+The correlation of $X$ and $Y$ is given by
+\[
+\rho = \frac{E[(X - \mu_X)(Y - \mu_Y)]}{\sigma_X \sigma_Y}
+\]
+:::
+
+We can estimate the correlation from a sample using the R function `cor`. 
+
+```{r}
+x <- runif(30)
+y <- 1 + 2 * x + rnorm(30, 0, .5)
+cor(x, y)
+cor(2 * x, 2 * y)
+```
+
+Note that the estimate for the correlation between $X$ and $Y$ does not change when we multiply $X$ or $Y$ by a constant. 
+
+If you want some practice with guessing that correlation, you can play [guess the correlation](http://guessthecorrelation.com/). 
+
+## Autocorrelation
+
+For the purposes of time series, the type of correlation we will mostly be interesed in is **autocorrelation** and or its **autocovariance**. Suppose that we have a sequence of random variables indexed by time $X_t$ such that the distribution of $X_t$ doesn't depend on the time $t$. 
+
+::: alert
+It may seem strange that the distribution doesn't depend on $t$, but that there is dependence of $X_{t + 1}$ on $X_t$. However, this is typical. The distribution of $X_t$ not knowing anything else is the same as the distribution of $X_{t + 1}$ not knowing anything else. 
+:::
+
+Since we are assuming the distribution doesn't depend on $t$, each $X_t$ has the same mean, which we call $\mu$. In particular, this means that the time series has a trend that is constant.
+
+::: definition
+We define the autocovariance at time $(t_1, t_2)$ to be 
+\[
+\gamma(t_1, t_2) = {\text {Cov}} ({X_{t_1}, X_{t_2}}) = E[(X_{t_1}- \mu)(X_{t_2} - \mu)] 
+\]
+:::
+
+Unfortunately, if we only have one set of data from a time series, we really can't estimate $\gamma(t_1, t_2)$ from the data. That is because we only have one sample from $X_{t_1}$ and one sample from $X_{t_2}$. If we want to estimate the autocovariance from the data, we can do one of two things. We can either take a lot of samples from the time series, which is sometimes impractical. Or, we can make additional assumptions about the data, which is what we choose to do in this chapter.
+
+::: definition
+A time series $X_t$ is said to be _strictly stationary_ if the distribution of $X_{t_1}, \ldots, X_{t_k}$ is the same as the distribution of $X_{t_1 + \tau}, \ldots, X_{t_k + \tau}$ for all $t_1, \ldots, t_k, \tau$. In other words, shifting the time origin by an amount $\tau$ will have no effect on the joint distributions of the time series.
+:::
+
+The definition above implies (in the case $k = 1$) that each $X_t$ has the same mean, variance and distribution.
+
+::: alert
+Strictly stationary is a property of time series that we are for now **assuming** to be true because of the nice properties that strictly stationary time series have. 
+:::
+
+When a time series is strictly stationary, the autocovariance $\gamma(t_1, t_2)$ only depends on the absolute difference between $t_1$ and $t_2$, and not on the specific representative. The difference $|t_2 - t_1| = \tau$ is called the **lag**, and we can write the definition of the autocovariance at lag $\tau$ as
+
+\[
+\gamma(\tau) = E[(X_t - \mu)(X_{t + \tau} - \mu)]
+\]
+
+where this value is the same no matter which $t$ we choose. We can now estimate the value of the autocovariance from a single time series in the following way. Given a time series $x_1, \ldots, x_n$ and a value $\tau$, we create a new time series $x_{1 + \tau}, \ldots, x_n$; that is, it is the original time series starting at $1 + \tau$. We imagine that each pair $(x_t, x_{t + \tau}), \ \ j = 1, \ldots, n - \tau$ is a sample from the pair $(X_t, X_{t + \tau})$, and we compute the sample covariance of that sequence! 
+
+Here is how it goes in an example. We set $\tau = 2$, so we are estimating the covariance at lag 2.
+
+```{r}
+x <- c(1, 2.5, 3.2, 4.1, 3)
+tau <- 2
+ind <- 1:(length(x) - tau)
+x1 <- x[ind]
+x2 <- x[ind + tau]
+cov(x1, x2)
+```
+
+Unfortunately, this does not match the built in R function that does this. The built in R function uses the mean of the entire time series as the estimate for each mean in the definition of covariance (which makes sense) and divides by the length of the entire time series (which makes the estimate biased).  Let's see the R code.
+
+We stick with the same sequence `x` of length 5 that we defined above and compute the autocovariance at lag 2.
+
+```{r}
+tau <- 2
+ind <- 1:(length(x) - tau)
+x1 <- x[ind]
+x2 <- x[ind + tau]
+meanx <- mean(x)
+(1/length(x) * sum((x1 - meanx) * (x2 - meanx)))
+```
+
+The R function for doing this directly is `acf` with argument `type = "cov"`: we see that the autocovariance at lag 2 is -.2034, as we computed above.
+
+```{r}
+acf(x, type = "cov", plot = FALSE)
+```
+
+
+Finally, to get the *autocorrelation* we then normalize by dividing all of the values by $\gamma(0)$, our estimate as computed above for the autocovariance with lag 0. 
+
+```{r}
+meanx <- mean(x)
+gamma0 <- 1/length(x) * sum((x - meanx) * (x - meanx))
+(1/length(x) * sum((x1 - meanx) * (x2 - meanx)))/gamma0
+acf(x, plot = FALSE)
+```
+
+We see that the autocorrelation at lag 2 is -0.195 and matches the output of `acf`. 
+
+::: {.theorem #thm:acfzero}
+If $X_t$ is a strictly stationary time series and $X_t$ and $X_{t + \tau}$ are independent, then $\gamma(\tau) = 0$.  
+:::
+
+## The Correlogram {#correlogram}
+
+Now that we know how to compute the sample[^sample] autocorrelation and autocovariance of a time series, let's see about interpreting it. For interpretation, it is convenient to plot all of the autocorrelations up to a certain lag for a time series, and then see which one(s) are significantly different from zero. Remember, independence implies at lag $k$ implies that the autocorrelation at lag $k$ will be zero. We have interpretations here for **strictly staionary** series.
+
+First, let's assume that the time series is _white noise_; that is, it is independent normal random variables with mean 0. The sample autocorrelation will not be exactly zero, so we want to find an interval around zero that contains the sample autocorrelation 95 percent of the time. If the autocorrelation of a time series falls outside of that interval, then it is unlikely that the time series is independent at lag $k$. We will take a series of length 20 consisting of independent observations, compute the `acf` at lag 1, and find values so that 95 percent of the time the acf at lag 1 is between those two values. Here we go.
+
+```{r}
+x <- rnorm(20)
+acf(x, plot = FALSE)$acf[2]
+sim_data <- replicate(10000, {
+  x <- rnorm(20)
+  acf(x, plot = FALSE)$acf[2] 
+})
+quantile(sim_data, c(.025, .975))
+```
+
+There is a lot to unpack from this simulation. We see that the 95 percent confidence interval for the acf at lag 1 is **not** symmetric around 0. This is because the acf function is a biased estimator for the acf at lag 1 when we have a time series of length 20.
+
+```{r}
+hist(sim_data)
+abline(v = mean(sim_data), lty = 2)
+```
+
+We also see that the value that R computes for the 95 percent confidence interval for the acf is 
+
+```{r}
+qnorm((1 + .95)/2)/sqrt(20)
+```
+
+This value is closer to the larger of the two. The confidence interval given by `acf` is really an **asymptotic** confidence interval in the sense that it only works perfectly as the length of the time series goes to infinity. Let's repeat our simulation in the case of a time series with length 5000, and we see that everything works much better.
+
+```{r cache = TRUE}
+sim_data <- replicate(20000, {
+  x <- rnorm(5000)
+  acf(x, plot = FALSE)$acf[2] 
+})
+quantile(sim_data, c(.025, .975)) #approximately symmetric
+qnorm((1 + .95)/2)/sqrt(5000) #approximately equal to the value here
+```
+
+**Summary**: The dashed lines provided by `acf` in the acf plot give confidence intervals for the autocorrelation at various lags under the assumption that the time series is independent at those lags. For small sample sizes, the positive value is too high and will possibly lead to not rejecting independence more often than warranted. For larger sample sizes, the dashed lines give good confidence intervals. 
+
+::: alert
+In the `acf` plot we are potentially creating multiple confidence intervals at once. If we have 20 intervals, then we expect on average one of the values to fall outside of the interval even if there is independence! 
+:::
+
+::: example
+Let's look at the **random component** of the decomposition of the maine unemployment data into a trend, seasonal and random components. We will plot the correlogram and see whether it it is reasonable to assume that the random component is independent.
+
+```{r}
+mm <- tswrdata::maine
+mm <- ts(mm, start = c(2004, 2), frequency = 4)
+mod_mm <- decompose(mm)
+mod_mm$random
+acf(mod_mm$random, na.action = na.pass)
+```
+
+We see that lags that are equal to 1, 2, 3, 4 years are all significant. This indicates that we may not have sufficiently modeled the seasonal component of the time series.
+:::
+
+
+
+
+[^sample]: When we add the adjective _sample_ in front of a statistic, we mean that it is a value that is estimated from data.
+
+## Introduction to Moving Average Models {#intromovingaverage}
+
+Now we are ready to start modeling some of the dependence in time series. There are two models that we will use very frequently: the moving average (MA) model and the autoregressive (AR) model. Let's start with an example of a moving average model called MA(1). In this model, we have $z_t$ which is an **independent** sample from a normal random variable with mean 0 and some standard deviation. We then create the time series $x_t$ by
+
+\[
+x_t = \begin{cases}
+z_t&t = 1\\
+\frac 12 z_t + \frac 12 z_{t - 1}&t > 1
+\end{cases}
+\]
+
+There is nothing that forces us to choose $\frac 12$ as the two coefficients, but it is traditional to choose the coefficients to sum to 1 so that it is an "average."
+
+We see that $x_t$ is **not** independent from $x_{t - 1}$, because if we know that $x_t$ is really large, then that is possibly because $z_t$ is really large, in which case it is likely that $x_{t + 1}$ will also be large. However, $x_{t + 2}$ does not depend on $x_t$ at all (just look at the definition!). Therefore, we expect for $x_{t + 2}$ to be independent of $x_t$. Let's think about what this means for the autocorrelation function. 
+
+For $\tau > 1$, by \@ref(thm:acfzero), we have that the autocorrelation is 0. For $\tau = 0$, the autocorrelation is normalized to be 1, so we only need to compute the autocorrelation for lag $\tau = 1$, which we do via simulations. We first see how to simulate data that follows a moving average generative process, using a loop and using `filter`. 
+
+```{r}
+z <- rnorm(100) #these are the z_t
+x <- z[1]
+for(i in 2:100) x[i] <- 1/2 * (z[i] + z[i - 1])
+x[1:5]
+stats::filter(z, filter = c(1/2 ,1/2), sides = 1)[1:5]
+```
+
+Notice that `filter` sets the first value to `NA` since there is nothing to add to z[1]. That is slightly better than what we were doing in the loop, because now all of the data follows the same pattern.
+
+```{r}
+x <- stats::filter(z, filter = c(1/2 ,1/2), sides = 1)[-1] #removes first element
+```
+
+If we are interested in understanding the lag at $\tau = 1$, then we can visualize it by plotting `x[2:99]` versus `x[1:98]`. 
+
+```{r}
+plot(x[1:98], x[2:99])
+abline(v = mean(x), h = mean(x), lty = 2)
+```
+
+It appears that the autocorrelation at lag 1 is going to be positive based on this plot. Indeed, 
+
+```{r}
+acf(x, plot = FALSE)[1]
+```
+
+Now we put it in `replicate`.
+
+```{r cache=TRUE}
+sim_data <- replicate(10000, {
+  z <- rnorm(100)
+  x <- stats::filter(z, filter = c(1/2 ,1/2), sides = 1)[-1]
+  acf(x, plot = FALSE)[1]
+})
+mean(sim_data)
+```
+
+Whoopsy-daisy!! I didn't check what type of data was returned by `acf(x, plot = FALSE)[1]`.
+
+```{r}
+str( acf(x, plot = FALSE)[1])
+```
+
+Oh, dear. To pull out the actual value, we need to do the following:
+
+```{r cache=TRUE}
+sim_data <- replicate(10000, {
+  z <- rnorm(100)
+  x <- stats::filter(z, filter = c(1/2 ,1/2), sides = 1)[-1]
+  acf(x, plot = FALSE)[1]$acf
+})
+mean(sim_data)
+```
+
+If we run this a few times, we see that our estimate of the autocorrelation of this MA(1) model at lag 1 is about .48. The true value of the autocorrelation at lag 1 of an MA(1) process with coefficients $\beta_0$ and $\beta_1$ is $\beta_0 \beta_1/(\beta_0^2 + \beta_1^2)$. We mentioned above that the `acf` function is **biased**, and sure enough, it is. However, as the sample size goes to infinity, the estimate becomes less and less biased.
+
+```{r cache=TRUE}
+sim_data <- replicate(10000, {
+  z <- rnorm(1000) #notice we are using a sample size of 1000 here
+  x <- stats::filter(z, filter = c(1/2 ,1/2), sides = 1)[-1]
+  acf(x, plot = FALSE)[1]$acf
+})
+mean(sim_data) #closer to the true value of 0.5
+```
+
+## Introduction to Autoregressive models {#introautoregressive}
+
+The second model that we are introducing in this chapter is the AR(1) model. We will introduce talk about the more general AR(q) model later.
+
+::: definition
+Let $(z_t)$ be iid normal random variables with mean 0 and standard deviation $\sigma$. If the time series $(x_t)$ is created via $x_1 = z_1$ and
+
+\[
+x_t = \alpha x_{t - 1} + z_t \qquad t \ge 2
+\]
+
+then the time series is an AR(1) process with coefficient $\alpha$. 
+:::
+
+We start by collecting a few facts about an AR(1) process with coefficient $\alpha$.
+
+::: theorem
+If $(x_t)$ is an AR(1) process with coefficient $\alpha$ with underlying standard deviation $\sigma$, then
+\begin{enumerate}
+\item $E(x_t) = 0$ for all $t$
+\item $V(x_1) = \sigma^2$
+\item $V(x_t) = \sigma^2\bigl(\sum_{i = 0}^{t - 1} \alpha^{2i}\bigr)$
+\end{enumerate}
+:::
+
+Note that in order for the variance of the process to be finite at each step, we need $|\alpha| < 1$. This will be a common assumption when we are dealing with AR(1) processes. We also see that the process isn't stationary, because the variance is increasing with time. However, if $|\alpha| < 1$, then the variance is very nearly constant after some initial _burn-in_ period. Many times, we assume that we are observing the AR(1) process long enough after it started so that the variance is essentially constant. When we are simulating AR(1) processes, it is usually a good idea to have a _burn-in_ phase, where we create values of $x_t$, but we don't save them into the time series. If we assume an infinite burn-in period, then ${\text {Var}}(X_t) = \sum_{i = 0}^\infty \alpha^{2i} = \frac 1{1 - \alpha^2}$
+
+::: alert
+Note that $x_t$ depends on **all** of the previous values of the time series, unlike the MA(1) process.
+:::
+
+Now, let's figure out what the autocovariance of $(x_t)$ at lag 1 is. We have, assuming that $|\alpha| < 1$ and an infinite burn-in,
+
+\begin{align*}
+{\text {Cov}}(X_t, X_{t + 1}) &= {\text {Cov}}(X_t, \alpha X_{t} + Z_{t + 1}) \\
+ &= \alpha {\text {Cov}}(X_t, X_{t}) \\
+ &= \frac {\alpha}{1 - \alpha^2} \sigma^2
+\end{align*}
+
+What about at lag 2?
+
+\begin{align*}
+{\text {Cov}}(X_t, X_{t + 2}) &= {\text {Cov}}(X_t, \alpha X_{t + 1} + Z_{t + 2}) \\
+ &= \alpha {\text {Cov}}(X_t, \alpha X_{t + 1}) \\
+ &= \frac {\alpha^2}{1 - \alpha^2} \sigma^2
+\end{align*}
+
+In Exercise \@ref(ex:arcovariance), you are asked to compute the covariance at lag 3. It is clear (by induction) that the general formula for the autocovariance at lag $k$ of an AR(1) process is $\frac {\alpha^k}{1 - \alpha^2}$.
+
+Let's do some simulations. In the following example, we will create a time series of length 200 from an AR(1) process with $\alpha = .5$ and $\sigma^2 = 4$.
+
+```{r}
+set.seed(4840)
+z <- rnorm(300, 0, 2) #we want to have a burn-in
+x <- z[1]
+alpha <- .5
+for(i in 2:300) {
+  x[i] <- alpha * x[i - 1] + z[i]
+}
+x <- x[101:300]
+plot(ts(x)) #looks pretty random, but
+acf(x)
+```
+
+Even though the acf of an AR(1) process decays exponentially to zero in theory, we often see a pattern where it looks like there is oscillation in the autocorrelation. If you try the above with `set.seed(3)` you will see an example of the phenomenon.
+
+```{r}
+z <- rnorm(10000, 0, 2) #we want to have a burn-in
+x <- z[1]
+alpha <- .5
+for(i in 2:10000) {
+  x[i] <- alpha * x[i - 1] + z[i]
+}
+x <- x[1001:10000]
+plot(ts(x)) #looks pretty random, but
+acf(x)
+```
+
+To summarize the last two sections, if we have a acf plot that decays exponentially to 0, then we may want to consider an AR model. If we have an acf plot that has one significant value and the rest are essentially zero with no decay, then we may want to consider a MA model. While we only worked through the details for AR(1) and MA(1) models, we will see later in the book that the general idea is the same when we have more complicated models.
+
+## Exercises
+
+::: {.exercise #ex:expectedcovariance}
+Suppose $X$ is chosen uniformly on $[0, 1]$ and that $Y$ is chosen uniformly on $[0, X]$. Use simulation to estimate the covariance of $X$ and $Y$.
+:::
+
+::: {.exercise #ex:computecov}
+Let $X, Y$ and $Z$ be independent normal random variables with mean 0 and variance 2. Compute the covariance of $\frac 12 X + \frac 12 Y$ and $\frac 12 Y + \frac 12 Z$ and check your answer using simulations.d
+:::
+
+::: {.exercise #ex:computecovma}
+Confirm that the true value of the autocorrelation of an MA(1) process at lag 1 with parameters $\beta_0 = \beta_1 = 1/2$ is 0.5.
+:::
+
+::: {.exercise #ex:correlationplots}
+For each of the following four plots, indicate whether the sample correlation\index{correlation}
+coefficient is greater than 0.3, between -0.3 and 0.3, or less than -0.3.
+
+```{r correlationplotsex, out.width=c('50%', '50%'), fig.show='hold', echo=FALSE, warning = FALSE, message = FALSE}
+set.seed(7)
+df <- data.frame(x = runif(200, 0, 5), plot = rep(1:4, each = 50))
+df <- mutate(df, y = case_when(
+  plot == 1 ~ x + rnorm(200, 0, 1.5),
+  plot == 2 ~ runif(200),
+  plot == 3 ~ -x + rnorm(200, 0, 1.5),
+  plot == 4 ~ x + .2 * x^2 + rnorm(200, 0, 3)
+)) 
+# df %>%
+#   group_by(plot) %>%
+#   summarize(cor = cor(x, y)) #true values are .72, .17, -.78 and .63
+ggplot(df, aes(x, y)) + 
+  geom_point() + 
+  facet_wrap(~plot, scales = "free_y")
+```
+:::
+
+::: {.exercise #ex:randommodelex}
+Consider the `monthly` data set in the `tswrdata` package. 
+
+a. Create an additive model of trend + season + random for the GISTEMP global data.
+b. Use a correlogram to visually inspect the correlation between lags of the random component. Does the model appear to be completely specified? 
+:::
+
+::: {.solution #sol:randommodelex}
+We create an additive model via
+
+```{r}
+library(tidyverse)
+mm <- tswrdata::monthly
+mm <- mm %>% 
+  filter(source == "GISTEMP") %>% 
+  arrange(date)
+mod_mm <- decompose(ts(mm$mean, start = c(1880, 1), frequency = 12))
+plot(mod_mm)
+```
+
+As we see below, the model does not seem to be completely specified. The random component shows a seasonal pattern to the autocorrelations.
+
+```{r}
+acf(mod_mm$random, na.action = na.pass)
+```
+
+:::
+
+::: {.exercise #ex:movingave}
+Use simulation with a series of length 20 to estimate the autocorrelation at lag 1 for an MA(1) process with coefficients $\beta_0 = 0.3$ and $\beta_1 = 0.7$, and compare your result to $\frac {\beta_0 \beta_1}{\beta_0^2 + \beta_1^2}$.  Repeat your estimation with a series of length 200. 
+:::
+
+::: {.exercise #ex:arcovariance}
+Let $(x_t)$ be an AR(1) process with coefficient $\alpha$. Assume $|\alpha| < 1$ and an infinite burn-in. Show that the autocorrelation of $(x_t)$ at lag 3 is given by $\frac {\alpha^3}{1 - \alpha^2}$.
+:::
+

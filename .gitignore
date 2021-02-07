@@ -5,6 +5,7 @@ _bookdown_files/*
 data/*
 .DS_Store
 *.Rproj
+sed_test/*
 
 # History files
 .Rhistory

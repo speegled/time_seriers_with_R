@@ -1,6 +1,6 @@
 # Stationary Models {#stationarymodels}
 
-In Chapter \@ref(regression), we modelled trends and seasonality of various time series. The residuals left over after modelling the trend and seasonality then need to be modelled in order to get a satisfactory final model. This leads us to the concept of stationary models. 
+In Chapter \@ref(regressiontechniques), we modelled trends and seasonality of various time series. The residuals left over after modelling the trend and seasonality then need to be modelled in order to get a satisfactory final model. This leads us to the concept of stationary models. 
 
 ::: definition
 A time series is _stationary_ if for every $n$ and $m$, the distribution of $x_{t_1}, \ldots, x_{t_n}$ is the same as the distribution of $x_{t_1 + m}, \ldots, x_{t_n + m}$.
