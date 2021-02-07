@@ -484,12 +484,39 @@ To summarize the last two sections, if we have a acf plot that decays exponentia
 Suppose $X$ is chosen uniformly on $[0, 1]$ and that $Y$ is chosen uniformly on $[0, X]$. Use simulation to estimate the covariance of $X$ and $Y$.
 :::
 
+::: {.solution #sol:expectedcovariance}
+```{r}
+x <- runif(10000, 0, 1)
+y <- runif(10000, 0, x)
+cov(x, y)
+```
+The covariance is approximately `r round(cov(x,y), 3)`.
+:::
+
 ::: {.exercise #ex:computecov}
 Let $X, Y$ and $Z$ be independent normal random variables with mean 0 and variance 2. Compute the covariance of $\frac 12 X + \frac 12 Y$ and $\frac 12 Y + \frac 12 Z$ and check your answer using simulations.d
 :::
 
+::: {.solution #sol:computecov}
+
+
+\begin{align*}
+{\text {Cov}}(\frac 12 X + \frac 12 Y, \frac 12 Y + \frac 12 Z) &= \frac 14 {\text {Cov}}(X, Y) + \frac 14 {\text {Cov}}(X, Z) + \frac 14 {\text {Cov}}(Y, Y) + \frac 14 {\text {Cov}}(Y, Z)\\
+&= \frac 14 {\text {Cov}}(Y, Y) = \frac 14 {\text {Var}}(Y) = \frac 1/4 \times 2 = 1/2
+\end{align*}
+
+Compare to the simulation result:
+```{r}
+x <- rnorm(10000, 0, sqrt(2))
+y <- rnorm(10000, 0, sqrt(2))
+z <- rnorm(10000, 0, sqrt(2))
+cov(1/2*(x + y), 1/2 * (y + z))
+```
+
+:::
+
 ::: {.exercise #ex:computecovma}
-Confirm that the true value of the autocorrelation of an MA(1) process at lag 1 with parameters $\beta_0 = \beta_1 = 1/2$ is 0.5.
+Confirm that the true value of the autocorrelation of an MA(1) process with $\sigma = 1$ at lag 1 with parameters $\beta_0 = \beta_1 = 1/2$ is 0.5.
 :::
 
 ::: {.exercise #ex:correlationplots}
@@ -512,6 +539,15 @@ ggplot(df, aes(x, y)) +
   geom_point() + 
   facet_wrap(~plot, scales = "free_y")
 ```
+:::
+
+::: {.solution #sol:correlationplots}
+
+1. Bigger than .3
+2. Between -0.3 and 0.3
+3. Les than -0.3
+4. Bigger than 0.3
+
 :::
 
 ::: {.exercise #ex:randommodelex}
@@ -546,7 +582,38 @@ acf(mod_mm$random, na.action = na.pass)
 Use simulation with a series of length 20 to estimate the autocorrelation at lag 1 for an MA(1) process with coefficients $\beta_0 = 0.3$ and $\beta_1 = 0.7$, and compare your result to $\frac {\beta_0 \beta_1}{\beta_0^2 + \beta_1^2}$.  Repeat your estimation with a series of length 200. 
 :::
 
+::: {.solution #sol:movingave}
+```{r}
+sim_data <- replicate(10000, {
+  z <- rnorm(21)
+  x <- z[1]
+  for(i in 2:21) x[i] <- .3 * z[i - 1] + .7 * z[i]
+  acf(x[-1], plot = F)$acf[2]
+})
+mean(sim_data)
+.3 * .7/(.3^2 + .7^2) #not very close, this is because acf is biased estimate for small sample sizes
+
+
+sim_data <- replicate(10000, {
+  z <- rnorm(201)
+  x <- z[1]
+  for(i in 2:201) x[i] <- .3 * z[i - 1] + .7 * z[i]
+  acf(x[-1], plot = F)$acf[2]
+})
+mean(sim_data)
+.3 * .7/(.3^2 + .7^2) #better
+```
+
+:::
+
+
 ::: {.exercise #ex:arcovariance}
 Let $(x_t)$ be an AR(1) process with coefficient $\alpha$. Assume $|\alpha| < 1$ and an infinite burn-in. Show that the autocorrelation of $(x_t)$ at lag 3 is given by $\frac {\alpha^3}{1 - \alpha^2}$.
+:::
+
+::: {.solution #sol:arcovariance}
+
+We know from the notes that the autocorrelation at lag 2 is  $\frac {\alpha^2}{1 - \alpha^2}$. We compute ${\text {Cov}}(X_t, X_{t + 3}) = {\text {\Cov}}(X_t, \alpha X_{t + 2} + Z_{t + 3}) = {\text {Cov}}(X_t, \alpha X_{t + 2}) = \alpha \frac {alpha^2}{1 - \alpha^2}$ as desired.
+
 :::
 

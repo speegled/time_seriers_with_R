@@ -255,8 +255,43 @@ Change the value of $q$ in the above code and see how it affects the plot. Which
 Consider the `blackberry` data in the `tswrdata` package. Create an additive decomposition into trend, season and random components of the number of units of handeld blackberries sold using 4 cycles per season. Plot it and comment on the random component. 
 :::
 
+::: {.solution #sol:one}
+
+```{r}
+bb <- tswrdata::blackberry
+hh <- ts(bb$handheld, start = c(2004, 2), frequency = 4)
+plot(decompose(hh))
+```
+
+The random component does not seem random at all. The variance is larger where the observed values are also larger.
+:::
+
 ::: exercise
 Consider the unemployment data `maine` in the `tswrdata` package. Create a plot using `ggplot` of the unemployment, trend, seasonal and random components as was done in Example \@ref(exm:decomposeexample).
+:::
+
+::: {.solution #sol:two}
+
+```{r}
+mm <- tswrdata::maine
+library(lubridate)
+mm$date <- seq(ymd("1996-01-01"), by = "month", length.out = 128)
+
+mm %>% 
+  mutate(trend = stats::filter(unemploy, filter = c(1/24, rep(1/12, 11), 1/24))) %>% 
+  mutate(month = month(date)) %>% 
+  mutate(season = unemploy - trend) %>% 
+  group_by(month) %>% 
+  mutate(season = mean(season, na.rm = T)) %>% 
+  ungroup() %>% 
+  mutate(random = unemploy - trend - season) %>% 
+  pivot_longer(cols = c(unemploy, trend, season, random)) %>% 
+  mutate(name = factor(name, levels = c("unemploy", "trend", "season", "random"))) %>% 
+  ggplot(aes(x = date, y = value)) + 
+  geom_line() + 
+  facet_grid(name~., scales = "free_y")
+```
+
 :::
 
 
@@ -266,7 +301,28 @@ Consider the `stltemp` data in the `tswrdata` package. Plot the maximum temperat
 Decompose the time series into a trend, season and random component and plot each of the three components. Use a seasonal component of 365 days.
 :::
 
+::: {.solution #sol:three}
+
+```{r}
+stl <- tswrdata::stltemp
+stl <- stl %>% 
+  filter(str_detect(name, "LAMBERT"), lubridate::year(date) %in% 1980:1999)
+tmax <- ts(stl$tmax, start = c(1980, 1), end = c(1999, 365), frequency = 365)
+plot(decompose(tmax))
+```
+
+:::
+
 ::: exercise
 Consider the `vaccines` data in the `tswrdata` package. Create a multiplicative decomposition into trend, season and random components of the number of doses of vaccine given in missouri. Plot it and comment. 
 :::
 
+::: {.solution #sol:four}
+```{r}
+vac <- tswrdata::vaccines
+vac <- arrange(vac, date)
+plot(decompose(ts(vac$doses, start = 1, frequency = 7), type = "mult"))
+```
+
+
+:::
