@@ -275,6 +275,7 @@ Consider the unemployment data `maine` in the `tswrdata` package. Create a plot 
 ```{r}
 mm <- tswrdata::maine
 library(lubridate)
+library(tidyr)
 mm$date <- seq(ymd("1996-01-01"), by = "month", length.out = 128)
 
 mm %>% 
@@ -304,6 +305,7 @@ Decompose the time series into a trend, season and random component and plot eac
 ::: {.solution #sol:three}
 
 ```{r}
+library(stringr)
 stl <- tswrdata::stltemp
 stl <- stl %>% 
   filter(str_detect(name, "LAMBERT"), lubridate::year(date) %in% 1980:1999)
