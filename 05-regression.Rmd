@@ -649,6 +649,8 @@ confint(mod)
 In this example, we look at the `electricity` data set from the `tswrdata` package. It contains the electric consumption in Australia from 
 :::
 
+## Exercises
+
 ::: {.exercise #ex:ezregressionsim}
 In this data, you are to simulate data and model it.
 

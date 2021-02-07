@@ -171,7 +171,9 @@ c. Fit a MA(1) process to the residuals. Is the constant statistically significa
 ## Fitting ARMA models {#fittingarmamodels}
 
 
+## Exercises 
 
+TBD
 
 
 
