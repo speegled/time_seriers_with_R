@@ -423,7 +423,7 @@ If $(x_t)$ is an AR(1) process with coefficient $\alpha$ with underlying standar
 \end{enumerate}
 :::
 
-Note that in order for the variance of the process to be finite at each step, we need $|\alpha| < 1$. This will be a common assumption when we are dealing with AR(1) processes. We also see that the process isn't stationary, because the variance is increasing with time. However, if $|\alpha| < 1$, then the variance is very nearly constant after some initial _burn-in_ period. Many times, we assume that we are observing the AR(1) process long enough after it started so that the variance is essentially constant. When we are simulating AR(1) processes, it is usually a good idea to have a _burn-in_ phase, where we create values of $x_t$, but we don't save them into the time series. If we assume an infinite burn-in period, then ${\text {Var}}(X_t) = \sum_{i = 0}^\infty \alpha^{2i} = \frac 1{1 - \alpha^2}$
+Note that in order for the variance of the process to be finite at each step, we need $|\alpha| < 1$. This will be a common assumption when we are dealing with AR(1) processes. We also see that the process isn't stationary, because the variance is increasing with time. However, if $|\alpha| < 1$, then the variance is very nearly constant after some initial _burn-in_ period. Many times, we assume that we are observing the AR(1) process long enough after it started so that the variance is essentially constant. When we are simulating AR(1) processes, it is usually a good idea to have a _burn-in_ phase, where we create values of $x_t$, but we don't save them into the time series. If we assume an infinite burn-in period, then ${\text {Var}}(X_t) = \sum_{i = 0}^\infty \alpha^{2i} = \frac 1{1 - \alpha^2}\sigma^2$
 
 ::: alert
 Note that $x_t$ depends on **all** of the previous values of the time series, unlike the MA(1) process.
@@ -516,7 +516,27 @@ cov(1/2*(x + y), 1/2 * (y + z))
 :::
 
 ::: {.exercise #ex:computecovma}
-Confirm that the true value of the autocorrelation of an MA(1) process with $\sigma = 1$ at lag 1 with parameters $\beta_0 = \beta_1 = 1/2$ is 0.5.
+Confirm that the true value of the autocorrelation of an MA(1) process with $\sigma = 1$ at lag 1 with positive parameters $\beta_0, \beta_1$ that sum to one is $\frac{\beta_0 \beta_1}{\beta_0^2 + \beta_1^2}$.
+:::
+
+::: {.solution #hidesol:computecovma}
+Let $Z_t, Z_{t + 1}, Z_{t + 2}$ be independent normal random variables with standard deviation (and variance) 1. We have that $X_t = \beta_0 Z_{t- 1} + \beta_1 Z_{t}$ and $X_{t + 1} = \beta_0 Z_t + \beta_1 Z_{t + 1}$. Therefore,
+
+\begin{align*}
+{\text {Cov}}(X_t, X_{t + 1}) &= {\text {Cov}}(\beta_0 Z_{t- 1} + \beta_1 Z_{t}, \beta_0 Z_t + \beta_1 Z_{t + 1})\\
+&= \beta_0 \beta_1 {\text {Cov}} (Z_t, Z_t) \\
+&= \beta_0 \beta_1
+\end{align*}
+
+To finish the problem, we need to compute the covariance at lag 0. 
+\begin{align*}
+{\text {Cov}}(X_t, X_t) &= {\text {Cov}}(\beta_0 Z_{t- 1} + \beta_1 Z_{t}, \beta_0 Z_{t - 1} + \beta_1 Z_{t})\\
+&= \beta_0^2 {\text{Cov}}(Z_{t - 1}, Z_{t- 1}) + \beta_1^2 {\text {Cov}} (Z_t, Z_t) \\
+&= \beta_0^2 + \beta_1^2
+\end{align*}
+
+The result follows by dividing these two values.
+
 :::
 
 ::: {.exercise #ex:correlationplots}
@@ -582,7 +602,7 @@ acf(mod_mm$random, na.action = na.pass)
 Use simulation with a series of length 20 to estimate the autocorrelation at lag 1 for an MA(1) process with coefficients $\beta_0 = 0.3$ and $\beta_1 = 0.7$, and compare your result to $\frac {\beta_0 \beta_1}{\beta_0^2 + \beta_1^2}$.  Repeat your estimation with a series of length 200. 
 :::
 
-::: {.solution #sol:movingave}
+::: {.solution #hidesol:movingave}
 ```{r}
 sim_data <- replicate(10000, {
   z <- rnorm(21)
@@ -608,12 +628,55 @@ mean(sim_data)
 
 
 ::: {.exercise #ex:arcovariance}
-Let $(x_t)$ be an AR(1) process with coefficient $\alpha$. Assume $|\alpha| < 1$ and an infinite burn-in. Show that the autocorrelation of $(x_t)$ at lag 3 is given by $\frac {\alpha^3}{1 - \alpha^2}$.
+Let $(x_t)$ be an AR(1) process with coefficient $\alpha$. Assume $|\alpha| < 1$ and an infinite burn-in. Show that the autocorrelation of $(x_t)$ at lag 3 is given by ${\alpha^3}$.
 :::
 
-::: {.solution #sol:arcovariance}
+::: {.solution #hidesol:arcovariance}
 
-We know from the notes that the autocorrelation at lag 2 is  $\frac {\alpha^2}{1 - \alpha^2}$. We compute ${\text {Cov}}(X_t, X_{t + 3}) = {\text {\Cov}}(X_t, \alpha X_{t + 2} + Z_{t + 3}) = {\text {Cov}}(X_t, \alpha X_{t + 2}) = \alpha \frac {alpha^2}{1 - \alpha^2}$ as desired.
+We know from the notes that the autocovariance at lag 2 is  $\frac {\alpha^2\sigma}{1 - \alpha^2}$. We compute ${\text {Cov}}(X_t, X_{t + 3}) = {\text {\Cov}}(X_t, \alpha X_{t + 2} + Z_{t + 3}) = {\text {Cov}}(X_t, \alpha X_{t + 2}) = \alpha \frac {alpha^2\sigma^2}{1 - \alpha^2}$ as desired. Since  ${\text {\Cov}}(X_t, X_t) = \frac{\sigma^2}{1 - \alpha^2}$, the result follows by dividing.
 
 :::
 
+
+::: {.exercise #ex:maorar}
+For each of the following correlograms, indicate whether it is consistent with the generating process MA(1), AR(1), or neither.  In the case that it is MA(1) or AR(1), provide rough estimates of the parameters. 
+
+```{r maorarplot, out.width=c('50%', '50%'), fig.show='hold', echo=FALSE}
+
+beta <- .7
+z <- rnorm(200)
+x <- z[1]
+for(i in 2:200) x[i] <- beta * z[i] + (1 - beta) * z[i - 1]
+acf(x[-1], main = "Plot 1")
+
+beta <- .5
+z <- rnorm(200)
+x <- z[1]
+for(i in 2:200) x[i] <- beta * z[i] + (1 - beta) * z[i - 1]
+acf(x[-1], main = "Plot 2")
+
+beta <- .8
+z <- rnorm(200)
+x <- z[1]
+for(i in 2:200) x[i] <- z[i] + beta * x[i - 1]
+acf(x[-1], main = "Plot 3")
+
+beta <- -.8
+z <- rnorm(200)
+x <- z[1]
+for(i in 2:200) x[i] <- z[i] + beta * x[i - 1]
+acf(x[-1], main = "Plot 4")
+
+z <- rnorm(2000)
+x <- z[1]
+x[2] <- .4 * z[1] + .6 * z[2]
+for(i in 3:2000) x[i] <- .4 * z[i] + .2 * z[i - 1] + .6 * z[i - 2]
+acf(x[-1], main = "Plot 5")
+```
+
+
+:::
+
+::: {.solution #hidesol:maorar}
+
+:::
