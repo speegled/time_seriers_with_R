@@ -1,5 +1,9 @@
 # Forecasting
 
+```{r child = 'pre-chapter-script.Rmd'} 
+```
+
+
 In this chapter, we discuss three methods for forecasting time series. 
 
 1. Find a lead variable. That is, find a variable that is highly correlated with the variable that you wish to forecast after a lag. An example is that new housing construction permits are a lead variable for variables related to house construction, such as home construction materials.
@@ -49,7 +53,7 @@ ccf(activity_mod$random[-c(1, 2, 42, 43)],
     main = "ccf of activity and approvals")
 ```
 
-This is a more realistic cross correlation function. It shows that the **random** component of the decomposition of housing activity is correlated with housing approvals from 1 and/or 2 quarters prior. 
+This plot shows that the **random** component of the decomposition of housing activity is correlated with housing approvals from 1 and/or 2 quarters prior. 
 
 ## Bass Model
 
@@ -278,6 +282,132 @@ head(mu)
 
 ## Holt Winters Method
 
+In the previous section, we assumed that the mean changed unpredictably over time. In this section, we also assume that there is also a random **seasonality** component that is allowed to change over time as well as a random **slope** or **trend** component that is allowed to change over time. That is, we have three things that are allowed to change over time; the mean, the slope or trend, and the magnitude of the seasonality. 
+
+::: alert
+The **frequency** of the seasonality is not allowed to change over time in this model.
+:::
+
+Let's look at a plot of a typical data set that the Holt Winters method can be used with. The `auswine` data set contains monthly sales of various types of wine in Australia. We will look at sweet white wine.
+
+```{r}
+aa <- tswrdata::auswine
+sweetwhite <- ts(aa$sweetw, frequency = 12, start = c(1980, 1))
+plot(sweetwhite)
+```
+
+The sales seem to be periodic with a trend, but the magnitude of the seasonal component appears to change with time. We could try a multiplicative seasonal model using `decompose`, and I encourage you to do so in order to compare with what we decide to do below. We do things a bit the other way around in this section, and begin with the R code of our new model. We might want to choose a multiplicative seasonal model because it seems that the seasonal variation is closer to being multiplicative than additive, but we will do an additive one.
+
+```{r}
+mod_hw <- HoltWinters(sweetwhite, seasonal = "additive")
+plot(mod_hw)
+acf(residuals(mod_hw))
+```
+
+There still seems to be some periodicity in the residuals of the model, perhaps we should change the frequency to 6?
+
+```{r}
+sweetwhite <- ts(aa$sweetw, frequency = 6, start = c(1980, 1), end = c(1997, 6)) 
+mod_hw_6 <- HoltWinters(sweetwhite, seasonal = "mult")
+plot(mod_hw_6)
+acf(resid(mod_hw_6))
+```
+
+That seems even worse, so we'll stick with the first one. We could also have used the functin `findfrequency` in the `forecast` package to estimate the frequency of the data. We get 12 there, as well.
+
+```{r}
+forecast::findfrequency(aa$sweetw)
+```
+
+Let's see what the Holt-Winters model outputs.
+
+```{r}
+mod_hw
+```
+
+
+We note hear that the Holt-Winters exponential smoothing procedure produced estimates for three parameters; for $\alpha$, $\beta$ and $\gamma$, as well as 14 coefficients that will be explained later. The model is:
+
+\begin{align*}
+a_t &= \alpha(x_t - s_{t - p}) + (1 - \alpha) (a_{t - 1} + b_{t - 1}) \\
+b_t &= \beta (a_t - a_{t- 1}) + (1 - \beta) b_{t - 1}\\
+s_t &= \gamma(x_t - a_t) + (1 - \gamma) s_{t - p}
+\end{align*}
+
+Here, $a_t$ is the **level** of the time series, $b_t$ is the **slope** or **trend** of the time series, and $s_t$ is the seasonal effect of the time series all at time $t$. In this case, the mean of the time seires is $a_t + s_t$, the level of the time series plus the seasonal effect at time $t$. The parameters $\alpha$, $\beta$ and $\gamma$ are **smoothing parameters**, and $p$ is the period of the time series (which we call the **frequency** above). Let's think about each of these equations.
+
+First, $x_t$ is the thing that we know; the data. So when estimating $a_t$, we can only use $x_t$ and things from the past. Since $E[x_t] = a_t + s_t$, our estimate for $x_t$ might be $a_t + s_t$. However, we can't use $s_t$, so we substitute $s_{t - p}$, and solve for $a_t$. That's where the $x_t - s_{t - p}$ comes from. Alternatively, we could estimate the level of the time series as the level of the time series at the previous point in time $a_t \approx a_{t - 1}$. But, since we have **slope** estimates, we estimate $a_t \approx a_{t - 1} + b_{t - 1}$. The final estimate for $a_t$ is a weighted average of these two separate estimates, where the weight is a parameter. Whew!
+
+All right, then. What about $b_t$?  This is the slope at time $t$. Now, we are allowed to use $x_t$ **and** our estimate for $a_t$ that we computed above, but not $s_t$ since we do not have an estimate for it. This one is easier. The quantity $a_t - a_{t - 1}$ is the estimated change in level of the time series between $t$ and $t - 1$, which is the slope. On the other hand, $b_{t - 1}$ was our esimate for the change in level of time series at time $t - 1$, so we take a weighted average of these two values.
+
+Finally, what about $s_t$? This is the seasonal component. Recall that $E[x_t] = a_t + s_t$, so one estimate for $s_t$ is $x_t - a_t$. The other estimate is $s_{t - p}$, which is our previous estimate for the seasonal component at this place in the period. We take a weighted average of those two values to get our estimate for $s_t$.
+
+How do we find good values for the parameters $\alpha$, $\beta$ and $\gamma$? Well, once again, we minimize the SS1PE. However, in this case, we need not only to esimate the smoothing parameters, but also $a_p$, $b_p$, and $s_1, \ldots, s_p$. Oh, dear. I am not sure I want to take a stab at this. Should I? OK. I'll do it, but only because you asked me to.
+
+::: {.example #exm:sweetwinehm}
+To estimate the seasonal values, we look at the first two periods of the time series and use `decompose`. 
+
+```{r}
+mod_decompose <- decompose(ts(sweetwhite[1:24], frequency = 12))
+```
+
+This means that we will estimate the seasonal effect for January-December of the first year as follows:
+
+```{r}
+mod_decompose$figure
+```
+
+To estimate the values of level and slope, we do a linear regression on the trend over the first two periods. The starting slope is the estimated slope, and while the intercept should seem to correspond to June of the first year, we will use it as our estimate for January in the second year. TBH, I am not sure why `HoltWinters` does this; it would seem that a better estimate would be the predicted value of the line of best fit at $t = 7$ (see Exercise \@ref(ex:whyintercept)).
+
+```{r}
+#this function assumes time series is stored in variable called x
+#frequency is a constant, thank goodness
+#will probably crash if frequency is less than length of data
+
+s <- mod_decompose$figure #estimate for starting seasonality
+trend <- na.omit(mod_decompose$trend) #note that this is JULY-JUNE; missing JAN-JUN of first year!!
+tt <- 1:12
+mod_lm <- lm(trend ~ tt)
+
+#intercept of model; initial estimate for mean level in JUNE, but we use for estimate for January of year 2
+a <- coefficients(mod_lm)[1] 
+
+b <- coefficients(mod_lm)[2] #initial estimate for slope
+
+ss1pe <- function(pars, frequency, debug = FALSE) {
+  if(debug) {browser()}
+  alpha <- pars[1]
+  beta <- pars[2]
+  gamma <- pars[3]
+  at <- a
+  bt <- b
+  st <- s
+  at <- rep(a, frequency) #repeating 12 times to make length same as st
+  bt <- rep(b, frequency) #repeating 12 times to make length same as st
+  st <- s
+  for(i in (frequency + 1):length(x)) {
+    at[i] <- alpha * (x[i] - st[i - frequency]) + (1 - alpha) * (at[i - 1] + bt[i - 1])
+    bt[i] <- beta * (at[i] - at[i - 1]) + (1 - beta) * bt[i - 1]
+    st[i] <- gamma * (x[i] - at[i]) + (1 - gamma) * st[i - frequency]
+  }
+  at <- at[-(1:(frequency - 1))] #get rid of the garbage data added above
+  bt <- bt[(-(1:frequency - 1))] #same
+  st <- st[-((length(st) - 11):length(st))] #st has garbage at the end
+  x <- x[-(1:frequency)] #the initial year of data is not estimated; estimates start in January
+  sum((x - (at[-length(at)] + bt[-length(at)] + st))^2) #sse; note that at + bt + st is the estimate for xt
+}
+x <- as.vector(sweetwhite)
+optim(par = c(.2, .2, .2), fn = ss1pe, frequency = 12, method = "L-BFGS-B", lower = rep(0, 3), upper = rep(1, 3))
+ss1pe(c(0.3633865, 0, 0.4975705), 12)
+```
+
+:::
+
+
+
+
+
+
 ## Exercises
 
 ::: {.exercise #ex:hazardfunction}
@@ -287,9 +417,238 @@ a. Find the hazard function for the time of purchase.
 b. Exponential random variables have the "memoryless property." Explain how your answer above can be interpreted as a memoryless property.
 :::
 
-::: exercise
+::: {.solution #hide:hazardfunction}
+
+The pdf of $X$ is $f(x) = 2 e^{-2x}$, so the cdf of $X$ is $F(x) = 1 - e^{-2x}$. This means that the hazard function is
+
+\[
+h(t) = \frac{f(t)}{{1 - F(t)}} = \frac {2e^{-2x}}{e^{-2x}} = 2
+\]
+
+This is the memoryless property because it doesn't matter how long a person has gone without buying the product, the likelihood of them buying in the next little bit remains the same. It doesn't "remember" that it has been a long time that they haven't bought the product.
+:::
+
+::: {.exercise #ex:blackberrybass}
 Consider the `blackberry` data in the `tswrdata` package. Estimate the values of $p, q$ and $m$ in the Bass model for number of handheld devices sold using only the first 20 data points and plot the resulting Bass curve on top of the data. 
 
 a. Comment on how well the model fits all of the data.
 b. How many blackberries does this model estimate will be sold overall?
+:::
+
+::: {.solution #hide:blackberrybass}
+```{r}
+bass <- function(p, q, m, x) {
+  (m*(p + q)^2 * exp(-(p + q) * x))/(p * (1 + (q/p) * exp(-(p + q)* x))^2)
+}
+
+bb <- tswrdata::blackberry
+bb$time <- 1:nrow(bb)
+
+bb_mod <- nls(handheld ~ bass(p, q, m, time), data = bb, start = list(p = 0.001, q = .3, m = 400), subset = 1:20)
+a <- coefficients(bb_mod)
+
+plot(bb$handheld)
+curve(bass(a[1], a[2], a[3], x), add = T, col = 2)
+
+```
+
+This overestimates the total sales, but not by too much. The total sales are estimated to be `r round(a[3])` million units.
+:::
+
+::: {.exercise #ex:ipodbass}
+Consider the `ipod` data in the `tswrdata` package. Estimate the values of $p$, $q$ and 4m$ in the Bass model for the number of ipods sold **using only the first 20 data points**. Plot the resulting Bass curve on top of **all** of the data and comment on the fit.
+:::
+
+::: {.solution #hide:ipodbass}
+
+```{r}
+bass <- function(p, q, m, x) {
+  (m*(p + q)^2 * exp(-(p + q) * x))/(p * (1 + (q/p) * exp(-(p + q)* x))^2)
+}
+
+ipod <- tswrdata::ipod
+ipod$time <- 1:nrow(ipod)
+
+ipod_mod <- nls(i_pod ~ bass(p, q, m, time), data = ipod, start = list(p = 0.01, q = .1, m = 100), subset = 1:20)
+a <- coefficients(ipod_mod)
+
+plot(ipod$i_pod)
+curve(bass(a[1], a[2], a[3], x), add = T, col = 2)
+
+```
+
+While the fit is very good up through about index 20, it becomes poor thereafter. It underestimates the total number of units sold as well. This model did not do a good job of predicting the sales.
+
+:::
+
+::: {.exercise #ex:ss1peexplore}
+Consider the `motororg` data in the `tswrdata` package. What is the SS1PE if you predict the number of complaints in the following month to be equal to the number of complaints in the current month?
+:::
+
+::: {.solution #hide:ss1peexplore}
+```{r}
+mm <- tswrdata::motororg
+sum((mm$complaints[1:47] - mm$complaints[2:48])^2)
+```
+
+The SS1PE is 3540, which is larger than the minimum value of 2502 that we found for $\alpha = .143$.
+:::
+
+::: {.exercise #ex:ss1peex}
+Consider the adjusted price of Apple stock, which can be loaded into the variable `AAPL` using `quantmod::getSymbols("AAPL")`. Restrict to calendar year 2019 using `AAPL[str_detect(index(AAPL), "2019")]` (for this, you will need the `zoo` package).
+
+a. Modify the function `ss1pe` given in the notes above to find the optimal value of $\alpha$ in an exponential smooothing model for the adjusted price of Apple in 2019. You will probably want to convert `AAPL$AAPL.Adjusted` to a numeric vector by using `as.vector(AAPL$AAPL.Adjusted)`.
+b. Give an explanation for why $\alpha$ is so large.
+c. Plot the exponentially smoothed time series of adjusted price for the optimal $\alpha$ on the same plot as the adjusted price.
+d. Plot the exponentially smoothed time series of adjusted price for $\alpha = 0.2$ on the same plot as the adjusted price.
+:::
+
+::: {.solution #hide:ss1peex}
+
+```{r}
+library(quantmod)
+library(zoo)
+library(stringr)
+quantmod::getSymbols("AAPL")
+aa <- AAPL[str_detect(index(AAPL), "2019")]
+plot(aa$AAPL.Adjusted)
+```
+
+```{r}
+ss1pe <- function(alpha) {
+  mu <- as.vector(aa$AAPL.Adjusted[1])
+  for(i in 2:nrow(aa)) mu[i] <- (1 - alpha) * mu[i - 1] + alpha * aa$AAPL.Adjusted[i]
+  sum((aa$AAPL.Adjusted[2:nrow(aa)] - mu[1:(nrow(aa) - 1)])^2)
+}
+optimize(f = ss1pe, lower = 0, upper = 1)
+HoltWinters(as.vector(aa$AAPL.Adjusted), beta = F, gamma = F) #same answer for alpha
+```
+
+It is large because the trend is locally larger than the random component of the plot. The data looks to be composed of a series of more or less straight lines.
+
+```{r}
+plot(as.vector(aa$AAPL.Adjusted))
+alpha <- 0.9668728
+mu <- as.vector(aa$AAPL.Adjusted[1])
+for(i in 2:nrow(aa)) mu[i] <- (1 - alpha) * mu[i - 1] + alpha * aa$AAPL.Adjusted[i]
+points(mu, type = "l", col = 2)
+```
+
+Note how for $\alpha = 0.2$, the estimate seems to be trailing the trend - it is either below the plot when the stock is increasing or above it when it is decreasing.
+
+```{r}
+plot(as.vector(aa$AAPL.Adjusted))
+alpha <- 0.2
+mu <- as.vector(aa$AAPL.Adjusted[1])
+for(i in 2:nrow(aa)) mu[i] <- (1 - alpha) * mu[i - 1] + alpha * aa$AAPL.Adjusted[i]
+points(mu, type = "l", col = 3, lty = 2)
+```
+
+:::
+
+
+::: {.exercise #ex:whyintercept}
+In this exercise, we investigate the choice of picking the intercept of the linear model of trend on time to be the initial value of the level at time $t = p + 1$. Modify the code in Example \@ref(exm:sweetwinehm) so that the initial value for the level in January is not the intercept of the linear model through the trend of the decomposed first two periods, but rather the predicted value for January of the linear model through the trend of the decomposed first two periods.
+:::
+
+
+::: {.solution #hide:whyintercept}
+
+```{r}
+mod_decompose <- decompose(ts(sweetwhite[1:24], frequency = 12))
+```
+
+```{r}
+sweetwhite <- tswrdata::auswine$sweetw
+mod_decompose <- decompose(ts(sweetwhite[1:24], frequency = 12))
+
+s <- mod_decompose$figure #estimate for starting seasonality
+trend <- na.omit(mod_decompose$trend) #note that this is JULY-JUNE; missing JAN-JUN of first year!!
+tt <- 1:12
+mod_lm <- lm(trend ~ tt)
+
+a <- coefficients(mod_lm)[1] 
+b <- coefficients(mod_lm)[2] #initial estimate for slope
+a <- a + 7 * b #this is the prediction for January of year 2, and the only change in the code
+
+ss1pe <- function(pars, frequency, debug = FALSE) {
+  if(debug) {browser()}
+  alpha <- pars[1]
+  beta <- pars[2]
+  gamma <- pars[3]
+  at <- a
+  bt <- b
+  st <- s
+  at <- rep(a, frequency) #repeating 12 times to make length same as st
+  bt <- rep(b, frequency) #repeating 12 times to make length same as st
+  st <- s
+  for(i in (frequency + 1):length(x)) {
+    at[i] <- alpha * (x[i] - st[i - frequency]) + (1 - alpha) * (at[i - 1] + bt[i - 1])
+    bt[i] <- beta * (at[i] - at[i - 1]) + (1 - beta) * bt[i - 1]
+    st[i] <- gamma * (x[i] - at[i]) + (1 - gamma) * st[i - frequency]
+  }
+  at <- at[-(1:(frequency - 1))] #get rid of the garbage data added above
+  bt <- bt[(-(1:frequency - 1))] #same
+  st <- st[-((length(st) - 11):length(st))] #st has garbage at the end
+  x <- x[-(1:frequency)] #the initial year of data is not estimated; estimates start in January
+  sum((x - (at[-length(at)] + bt[-length(at)] + st))^2) #sse; note that at + bt + st is the estimate for xt
+}
+x <- as.vector(sweetwhite)
+optim(par = c(.2, .2, .2), fn = ss1pe, frequency = 12, method = "L-BFGS-B", lower = rep(0, 3), upper = rep(1, 3))
+
+HoltWinters(ts(sweetwhite, frequency = 12))$SSE
+```
+
+Note that the SSE **decreases** from 548748.9 to 546607.2. This is kind of to be expected, since we know that `a + 7 * b` is a better estimate for the level in January of year 2 than `a` is. Instead of re-writing the entire algorithm, we could also have specified the start values for level, slope and seasonal values inside of `HoltWinters`. 
+
+```{r}
+#recall a <- a + 7 * b above
+mod_hw_2 <- HoltWinters(ts(sweetwhite, frequency = 12), l.start = a, b.start = b, s.start = s)
+mod_hw_2$SSE #matches what we obtained
+```
+
+
+```
+
+
+```{r echo = FALSE, eval = FALSE}
+length <- 200
+frequency <- 12
+
+b <- 1
+b_change <- cumsum(runif(200, rep(c(-.001, -.01), each = 100), rep(c(.001, .01), each = 100)))
+b_change
+for(i in 2:200) b[i] <- b[i-1] + b_change[i]
+s <- runif(1, .1, 2) * sin(1:12/12 * 2 * pi) + 
+  runif(1, .1, 1) * cos(1:12/12 * 2 * pi) + 
+  runif(1, -.5, .5) * sin(1:12/6 * 2 * pi)
+for(i in 13:200) s[i] <- s[i - 12] + runif(1, -.05, .05)
+a <- 1
+for(i in 2:200) a[i] <- a[i - 1] + b[i - 1] + if(runif(1) < .99) {runif(1, -.05, .05)} else {sample(c(-1, 1), 1) * rpois(1, 50)}
+
+
+x <- a + 5 * b + 10 * sd(b) * s + rnorm(200, 0, 1/3 * sd(a + b + s))
+plot(x, type = "l")
+hwmod <- HoltWinters(ts(x, frequency = 12))
+hwmod$SSE
+hwmod
+
+
+mod_decompose <- decompose(ts(x[1:24], frequency = 12))
+s <- mod_decompose$figure #estimate for starting seasonality
+trend <- na.omit(mod_decompose$trend) #note that this is JULY-JUNE; missing JAN-JUN of first year!!
+tt <- 1:12
+mod_lm <- lm(trend ~ tt)
+
+#intercept of model; initial estimate for mean level in JUNE, but we use for estimate for January of year 2
+a <- coefficients(mod_lm)[1] 
+
+b <- coefficients(mod_lm)[2] #initial estimate for slope
+a <- a + 7 * b
+optim(par = c(.2, .2, .2), fn = ss1pe, frequency = 12, method = "L-BFGS-B", lower = rep(0, 3), upper = rep(1, 3))
+
+```
+
+
+
 :::
