@@ -80,7 +80,7 @@ Assume that the time for a person to eventually buy the product has a probabilit
 
 ::: background
 
-For a continuous random variable $X$ with pdf $f$, we define the _hazard function_ $h(t) = \frac{f(t)}{1 - F(t)}$. If $X$ denotes the time until a person buys a product, $h(t) \Delta t$ is the probability that a person who has not yet bought the item at time $t$ will buy it in the time interval $[t, t + \Delta t}]$, at least for small values of $\Delta t$. If $X$ is the time until a person gets sick from a disease, then $h(t) \Delta t$ denotes the probability of getting sick "at time $t$" for people who have not yet gotten sick.
+For a continuous random variable $X$ with pdf $f$, we define the _hazard function_ $h(t) = \frac{f(t)}{1 - F(t)}$. If $X$ denotes the time until a person buys a product, $h(t) \Delta t$ is the probability that a person who has not yet bought the item at time $t$ will buy it in the time interval $[t, t + \Delta t]$, at least for small values of $\Delta t$. If $X$ is the time until a person gets sick from a disease, then $h(t) \Delta t$ denotes the probability of getting sick "at time $t$" for people who have not yet gotten sick.
 
 Let's look at some examples. If $X$ is uniform on the interval $[0, 1]$, this means that the time until a person buys the object is uniform between 0 and 1. Let's suppose that at time 1/2, the person has not yet bought the object. Let $Y$ be the time they buy the object given this new information. We have
 
@@ -188,6 +188,24 @@ We estimate the mean at time $t$ by taking a weighted average of the estimate of
 
 The value of $\alpha$ is a parameter that we need to decide on for our model. Values that are close to 0 indicate that the mean canges very little from time $t - 1$ to $t = 1$, and we would use this if we think that $\sigma$ is larger or  much larger than the change of mean over a time period of 1. When $\alpha$ is close to 1, this means that we are choosing the estimate of the current mean to be close to the current value of the time series. We use this when we expect the mean to change a lot in one time unit relative to $\sigma$. A common compromise value is $\alpha = .2$, or we can choose $\alpha$ that minimizes the one step ahead sum of squared error, see below.
 
+Let's look at some plots that correspond to various $\alpha$ in the `motororg` data.
+
+```{r}
+mm <- tswrdata::motororg
+alpha <- 0.9
+a <- mm$complaints[1]
+for(i in 2:48) a[i] <- alpha * mm$complaints[i] + (1 - alpha) * a[i - 1]
+
+alpha <- 0.05
+a2 <- mm$complaints[1]
+for(i in 2:48) a2[i] <- alpha * mm$complaints[i] + (1 - alpha) * a2[i - 1]
+
+plot(mm$complaints, type = "l")
+points(a, type = "l", col = 2) #follows curve very closely when alpha = 0.9
+points(a2, type = "l", col = 3) #smooths curve out when alpha = 0.05
+```
+
+
 :::theorem
 If $x_t$ is a time series with infinite burn-in and we estimate the mean $\hat \mu_t$ using exponential smoothing, then
 \[
@@ -205,7 +223,7 @@ motor <- tswrdata::motororg
 plot(motor$complaints, type = "l")
 ```
 
-There doesn't appear to be any obvious seasonal component to the data. Let's estimate the trend using exponential smoothing with $\alpha = 0.2$.
+There doesn't appear to be any obvious seasonal component or trend to the data. Let's estimate the trend using exponential smoothing with $\alpha = 0.2$.
 
 ```{r}
 x <- motor$complaints
@@ -232,6 +250,18 @@ If we want to choose $\alpha$ dynamically based on the data, then we can do the 
 \]
 
 where $\hat \mu_t$ is computed as above, and depends on $\alpha$.
+
+:::example
+Compute the sum of squared errors for the `motororg` data when $\alpha 0.5$.
+
+```{r}
+alpha <- 0.5
+a <- mm$complaints[1]
+for(i in 2:48) a[i] <- alpha * mm$complaints[i] + (1 - alpha) * a[i - 1]
+sum((a[1:47] - mm$complaints[2:48])^2)
+```
+
+:::
 
 ```{r}
 ss1pe <- function(alpha) {
@@ -277,7 +307,19 @@ fitted(mod_point2)[,2] #this match with the values we computed above
 head(mu)
 ```
 
+In order to forecast future values, we use the `predict` function.
 
+```{r}
+predict(mod, n.ahead = 2)
+```
+
+In this case, the future predictions are simply the estiamte for the last value of the level of the time series, which is not very interesting. However, we can also give error estimates.
+
+```{r}
+predict(mod, n.ahead = 2, prediction.interval = T, level = 0.95)
+```
+
+This says that, while our prediction for the number of complaints in the next two months are 17.7 in each month, our confidence decreases with time. For the first month, we are 95 percent confident it will be between $[3.51, 31.89]$ while for the second month we are 95 percent confident that it will be in the interval $[3.67, 32]$. 
 
 
 ## Holt Winters Method
@@ -307,8 +349,8 @@ acf(residuals(mod_hw))
 There still seems to be some periodicity in the residuals of the model, perhaps we should change the frequency to 6?
 
 ```{r}
-sweetwhite <- ts(aa$sweetw, frequency = 6, start = c(1980, 1), end = c(1997, 6)) 
-mod_hw_6 <- HoltWinters(sweetwhite, seasonal = "mult")
+sweetwhite_6 <- ts(aa$sweetw, frequency = 6, start = c(1980, 1), end = c(1997, 6)) 
+mod_hw_6 <- HoltWinters(sweetwhite_6, seasonal = "mult")
 plot(mod_hw_6)
 acf(resid(mod_hw_6))
 ```
@@ -326,7 +368,7 @@ mod_hw
 ```
 
 
-We note hear that the Holt-Winters exponential smoothing procedure produced estimates for three parameters; for $\alpha$, $\beta$ and $\gamma$, as well as 14 coefficients that will be explained later. The model is:
+We note hear that the Holt-Winters exponential smoothing procedure produced estimates for three parameters; for $\alpha$, $\beta$ and $\gamma$, and provided values of 14 coefficients. The model is:
 
 \begin{align*}
 a_t &= \alpha(x_t - s_{t - p}) + (1 - \alpha) (a_{t - 1} + b_{t - 1}) \\
@@ -341,6 +383,8 @@ First, $x_t$ is the thing that we know; the data. So when estimating $a_t$, we c
 All right, then. What about $b_t$?  This is the slope at time $t$. Now, we are allowed to use $x_t$ **and** our estimate for $a_t$ that we computed above, but not $s_t$ since we do not have an estimate for it. This one is easier. The quantity $a_t - a_{t - 1}$ is the estimated change in level of the time series between $t$ and $t - 1$, which is the slope. On the other hand, $b_{t - 1}$ was our esimate for the change in level of time series at time $t - 1$, so we take a weighted average of these two values.
 
 Finally, what about $s_t$? This is the seasonal component. Recall that $E[x_t] = a_t + s_t$, so one estimate for $s_t$ is $x_t - a_t$. The other estimate is $s_{t - p}$, which is our previous estimate for the seasonal component at this place in the period. We take a weighted average of those two values to get our estimate for $s_t$.
+
+The **coefficients** provided by `HoltWinters` are the last values of the level and trend, and the last `frequency` many values of the seasonal component. Since the frequency is 12, it provides 12 values.
 
 How do we find good values for the parameters $\alpha$, $\beta$ and $\gamma$? Well, once again, we minimize the SS1PE. However, in this case, we need not only to esimate the smoothing parameters, but also $a_p$, $b_p$, and $s_1, \ldots, s_p$. Oh, dear. I am not sure I want to take a stab at this. Should I? OK. I'll do it, but only because you asked me to.
 
@@ -393,14 +437,15 @@ ss1pe <- function(pars, frequency, debug = FALSE) {
   at <- at[-(1:(frequency - 1))] #get rid of the garbage data added above
   bt <- bt[(-(1:frequency - 1))] #same
   st <- st[-((length(st) - 11):length(st))] #st has garbage at the end
-  x <- x[-(1:frequency)] #the initial year of data is not estimated; estimates start in January
+  x <- x[-(1:(frequency))] #the initial year of data is not estimated; estimates start in January
   sum((x - (at[-length(at)] + bt[-length(at)] + st))^2) #sse; note that at + bt + st is the estimate for xt
 }
 x <- as.vector(sweetwhite)
 optim(par = c(.2, .2, .2), fn = ss1pe, frequency = 12, method = "L-BFGS-B", lower = rep(0, 3), upper = rep(1, 3))
-ss1pe(c(0.3633865, 0, 0.4975705), 12)
+mod_hw$SSE
 ```
 
+We see that we get the same values for the smoothing parameters as Holt-Winters, as well as the same values of the SSE. The coefficients given by Holt-Winters are the values of `a`, `b` and `s` that we estimated in the previous R chunk.
 :::
 
 
@@ -417,7 +462,7 @@ a. Find the hazard function for the time of purchase.
 b. Exponential random variables have the "memoryless property." Explain how your answer above can be interpreted as a memoryless property.
 :::
 
-::: {.solution #hide:hazardfunction}
+::: {.solution #sol:hazardfunction}
 
 The pdf of $X$ is $f(x) = 2 e^{-2x}$, so the cdf of $X$ is $F(x) = 1 - e^{-2x}$. This means that the hazard function is
 
@@ -435,7 +480,7 @@ a. Comment on how well the model fits all of the data.
 b. How many blackberries does this model estimate will be sold overall?
 :::
 
-::: {.solution #hide:blackberrybass}
+::: {.solution #sol:blackberrybass}
 ```{r}
 bass <- function(p, q, m, x) {
   (m*(p + q)^2 * exp(-(p + q) * x))/(p * (1 + (q/p) * exp(-(p + q)* x))^2)
@@ -445,6 +490,7 @@ bb <- tswrdata::blackberry
 bb$time <- 1:nrow(bb)
 
 bb_mod <- nls(handheld ~ bass(p, q, m, time), data = bb, start = list(p = 0.001, q = .3, m = 400), subset = 1:20)
+bb_mod <- nls(handheld ~ bass(p, q, m, time), data = bb[1:20,], start = list(p = 0.001, q = .3, m = 400), subset = 1:20)
 a <- coefficients(bb_mod)
 
 plot(bb$handheld)
@@ -459,7 +505,7 @@ This overestimates the total sales, but not by too much. The total sales are est
 Consider the `ipod` data in the `tswrdata` package. Estimate the values of $p$, $q$ and 4m$ in the Bass model for the number of ipods sold **using only the first 20 data points**. Plot the resulting Bass curve on top of **all** of the data and comment on the fit.
 :::
 
-::: {.solution #hide:ipodbass}
+::: {.solution #sol:ipodbass}
 
 ```{r}
 bass <- function(p, q, m, x) {
@@ -485,7 +531,7 @@ While the fit is very good up through about index 20, it becomes poor thereafter
 Consider the `motororg` data in the `tswrdata` package. What is the SS1PE if you predict the number of complaints in the following month to be equal to the number of complaints in the current month?
 :::
 
-::: {.solution #hide:ss1peexplore}
+::: {.solution #sol:ss1peexplore}
 ```{r}
 mm <- tswrdata::motororg
 sum((mm$complaints[1:47] - mm$complaints[2:48])^2)
@@ -498,12 +544,13 @@ The SS1PE is 3540, which is larger than the minimum value of 2502 that we found 
 Consider the adjusted price of Apple stock, which can be loaded into the variable `AAPL` using `quantmod::getSymbols("AAPL")`. Restrict to calendar year 2019 using `AAPL[str_detect(index(AAPL), "2019")]` (for this, you will need the `zoo` package).
 
 a. Modify the function `ss1pe` given in the notes above to find the optimal value of $\alpha$ in an exponential smooothing model for the adjusted price of Apple in 2019. You will probably want to convert `AAPL$AAPL.Adjusted` to a numeric vector by using `as.vector(AAPL$AAPL.Adjusted)`.
-b. Give an explanation for why $\alpha$ is so large.
+b. Give an explanation for why $\alpha$ is so large. Include a discussion of the **trend** of the time series.
 c. Plot the exponentially smoothed time series of adjusted price for the optimal $\alpha$ on the same plot as the adjusted price.
 d. Plot the exponentially smoothed time series of adjusted price for $\alpha = 0.2$ on the same plot as the adjusted price.
+e. Is this an appropriate model for this data set?
 :::
 
-::: {.solution #hide:ss1peex}
+::: {.solution #sol:ss1peex}
 
 ```{r}
 library(quantmod)
@@ -607,10 +654,6 @@ mod_hw_2 <- HoltWinters(ts(sweetwhite, frequency = 12), l.start = a, b.start = b
 mod_hw_2$SSE #matches what we obtained
 ```
 
-
-```
-
-
 ```{r echo = FALSE, eval = FALSE}
 length <- 200
 frequency <- 12
@@ -649,6 +692,141 @@ optim(par = c(.2, .2, .2), fn = ss1pe, frequency = 12, method = "L-BFGS-B", lowe
 
 ```
 
+:::
 
+::: {.exercise #ex:vaccineholt}
+Consider the `vaccine` data in the `tswrdata` package. 
+
+a. Create a Holt Winters model with level, trend and seasonal parameters and report the values of the smoothing parameters.
+b. Predict the number of vaccines that are going to be given in the next 7 days (from the end of the data set), together with 95 percent prediction intervals. Plot.
+:::
+
+::: {.solution #sol:vaccineholt}
+```{r}
+vv <- tswrdata::vaccines
+library(tidyverse)
+vv <- mutate(vv, date = lubridate::ymd(date))
+vv <- arrange(vv, date)
+vv_mod <- HoltWinters(ts(vv$doses, frequency = 7))
+plot(vv_mod)
+vv_mod$SSE
+forecast <- predict(vv_mod, n.ahead = 7, prediction.interval = .95)
+plot(vv_mod, forecast)
+```
+
+:::
+
+::: {.exercise #ex:stltemps}
+Consider the `stltemp` data set from the `tswrdata` package. Restrict to data from Lambert airport on or later than January 1, 1970 (You may need to remove the last data point, which has NA for `tmax`.)
+
+a. Remove all leapdays, in order to keep the frequency consistent at 365 days.
+a. Create a Holt - Winters model for temperature. 
+b. Forecast the high temperatures for the next 30 days after the end of the data, with 95 percent prediction intervals, and plot.
+c. Comment on whether the 95 percent prediction interval for February 13, 2021 is reasonable, too big, or too small, by comparing the values to the all-time record low and high for `tmax` in February at Lambert.
+:::
+
+
+::: {.solution #sol:stltemps}
+```{r}
+ss <- tswrdata::stltemp
+library(tidyverse)
+library(lubridate)
+ss$date <- ymd(ss$date)
+ss <- filter(ss, str_detect(name, "LAMBERT"), !str_detect(date, "02-29"))
+
+ss <- filter(ss, date >= "1970-01-01")
+mod_ss <- HoltWinters(ts(ss$tmax[!is.na(ss$tmax)], frequency = 365, start = c(2010, 1)))
+
+broom::tidy(predict(mod_ss, n.ahead = 30, prediction.interval = T, level = 0.9)) %>% 
+  mutate(date = rep(seq(ymd("2021-01-19"), length.out = 30, by = "day"), each = 3)) %>% 
+  filter(date == "2021-02-13")
+```
+
+The prediction interval for Feb 13 seems too wide at first glance.
+
+```{r}
+ss <- tswrdata::stltemp
+ss %>% 
+  filter(month(date) == 2) %>% 
+  summarize(min = min(tmax, na.rm = T),
+            max = max(tmax, na.rm = T))
+```
+
+The 95 percent prediction interval for Feb 13 contains all past `tmax` values for that date, which means that it is almost certainly too wide of an interval to be exactly a 95 percent prediction interval.
+:::
+
+::: {.exercise #ex:amtrakridership}
+Consider the `amtrak` data set in the `tswrdata` package. 
+
+a. Plot the data and determine whether an exponential smoothing  model with level or a Holt-Winters model with level, trend and seasonality is more appropriate. 
+b. Model the data according to your answer in b.
+c. Plot the data together with the model and forecast Amtrak ridership for the next 12 months.
+:::
+
+::: {.solution #sol:amtrakridership}
+```{r}
+aa <- tswrdata::amtrak
+library(tidyverse)
+ggplot(aa, aes(x = month, y = num_passengers)) + 
+  geom_line()
+```
+
+There seems to be a trend and seasonality, so we need to use Holt - Winters.
+
+```{r}
+forecast::findfrequency(aa$num_passengers)
+aap <- ts(aa$num_passengers, frequency = 12, start = c(1997, 1))
+mod_aa <- HoltWinters(aap)
+plot(mod_aa) #looks pretty good
+
+forecast <- predict(mod_aa, n.ahead = 12, prediction.interval = T, level = .95)
+plot(mod_aa, forecast)
+```
+
+:::
+
+::: {.exercise #ex:amtrakridership2}
+Consider the `amtrak` data set in the `tswrdata` package. 
+
+a. We can remove the trend and seasonal components of the data by **differencing**. If $x_t$ is the time series, let $y_t = x_{t + 1} - x_{t}$ and $z_t = y_{t + 12} - y_{t}$. This can be accomplished in R via `y = diff(x)` and `z = diff(y, lag = 12)`. 
+b. Perform the differencing described above and plot the twice-differenced data. Can you see any trend or seasonality component?
+c. Use exponential smoothing with level only to model the twice differenced data and plot.
+d. We can change the default starting value of exponential smoothing by specifying `l.start`. Note that the original value seems very low and not typical of the values of the data set. Re-do part c, specifying `l.start = 0` and comment.
+e. Choose `l.start` to be the mean of the first seven data points and re-do part c.
+:::
+
+::: {.solution #sol:amtrakrtidership2}
+```{r}
+aa <- tswrdata::amtrak$num_passengers
+y <- diff(aa)
+z <- diff(y, lag = 12)
+plot(z, type = "l")
+forecast::findfrequency(z)
+```
+
+I do not see any seasonality or trend, but `findfrequency` thinks there is a frequency of 3.
+
+We continue with exponential smoothing.
+
+```{r}
+mod_z <- HoltWinters(z, beta = FALSE, gamma = FALSE)
+plot(mod_z)
+```
+
+
+```{r}
+mod_z <- HoltWinters(z, beta = FALSE, gamma = FALSE, l.start = 0)
+plot(mod_z)
+mod_z
+```
+
+Note that $\alpha$ is essentially zero. This means that we are not changing it very much at all when getting new data, and just keeping the value at zero throughout the time series. 
+
+```{r}
+lstart <- mean(z[1:7])
+mod_z <- HoltWinters(z, beta = FALSE, gamma = FALSE, l.start = lstart)
+plot(mod_z)
+mod_z
+```
 
 :::

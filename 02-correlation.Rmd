@@ -519,7 +519,7 @@ cov(1/2*(x + y), 1/2 * (y + z))
 Confirm that the true value of the autocorrelation of an MA(1) process with $\sigma = 1$ at lag 1 with positive parameters $\beta_0, \beta_1$ that sum to one is $\frac{\beta_0 \beta_1}{\beta_0^2 + \beta_1^2}$.
 :::
 
-::: {.solution #hidesol:computecovma}
+::: {.solution #sol:computecovma}
 Let $Z_t, Z_{t + 1}, Z_{t + 2}$ be independent normal random variables with standard deviation (and variance) 1. We have that $X_t = \beta_0 Z_{t- 1} + \beta_1 Z_{t}$ and $X_{t + 1} = \beta_0 Z_t + \beta_1 Z_{t + 1}$. Therefore,
 
 \begin{align*}
@@ -602,7 +602,7 @@ acf(mod_mm$random, na.action = na.pass)
 Use simulation with a series of length 20 to estimate the autocorrelation at lag 1 for an MA(1) process with coefficients $\beta_0 = 0.3$ and $\beta_1 = 0.7$, and compare your result to $\frac {\beta_0 \beta_1}{\beta_0^2 + \beta_1^2}$.  Repeat your estimation with a series of length 200. 
 :::
 
-::: {.solution #hidesol:movingave}
+::: {.solution #sol:movingave}
 ```{r}
 sim_data <- replicate(10000, {
   z <- rnorm(21)
@@ -631,9 +631,9 @@ mean(sim_data)
 Let $(x_t)$ be an AR(1) process with coefficient $\alpha$. Assume $|\alpha| < 1$ and an infinite burn-in. Show that the autocorrelation of $(x_t)$ at lag 3 is given by ${\alpha^3}$.
 :::
 
-::: {.solution #hidesol:arcovariance}
+::: {.solution #sol:arcovariance}
 
-We know from the notes that the autocovariance at lag 2 is  $\frac {\alpha^2\sigma}{1 - \alpha^2}$. We compute ${\text {Cov}}(X_t, X_{t + 3}) = {\text {\Cov}}(X_t, \alpha X_{t + 2} + Z_{t + 3}) = {\text {Cov}}(X_t, \alpha X_{t + 2}) = \alpha \frac {alpha^2\sigma^2}{1 - \alpha^2}$ as desired. Since  ${\text {\Cov}}(X_t, X_t) = \frac{\sigma^2}{1 - \alpha^2}$, the result follows by dividing.
+We know from the notes that the autocovariance at lag 2 is  $\frac {\alpha^2\sigma}{1 - \alpha^2}$. We compute ${\text {Cov}}(X_t, X_{t + 3}) = {\text {Cov}}(X_t, \alpha X_{t + 2} + Z_{t + 3}) = {\text {Cov}}(X_t, \alpha X_{t + 2}) = \alpha \frac {\alpha^2\sigma^2}{1 - \alpha^2}$ as desired. Since  ${\text {\Cov}}(X_t, X_t) = \frac{\sigma^2}{1 - \alpha^2}$, the result follows by dividing.
 
 :::
 
@@ -677,6 +677,28 @@ acf(x[-1], main = "Plot 5")
 
 :::
 
-::: {.solution #hidesol:maorar}
+::: {.solution #sol:maorar}
+The acf plots are MA, MA, AR, AR and neither. Here are the parameters.
 
+```{r}
+beta <- .3
+ff <- function(x) {
+  (x * (1 - x)/(x^2 + (1 - x)^2) - beta)^2
+}
+optimise(f = ff, lower = 0, upper = 1)
+```
+
+1. About 0.25 or 0.75
+
+```{r}
+beta <- .6
+ff <- function(x) {
+  (x * (1 - x)/(x^2 + (1 - x)^2) - beta)^2
+}
+optimise(f = ff, lower = 0, upper = 1)
+```
+
+2. About 0.5
+3. About 0.8
+4. About -0.7
 :::

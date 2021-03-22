@@ -1,8 +1,106 @@
 # Regression Techniques {#regressiontechniques}
 
+```{r child = 'pre-chapter-script.Rmd'} 
+```
+
 In this chapter, we see how regression techniques can be used to model time series.
 Time series that can be modeled using regression have a deterministic aspect to them, 
 which is different thatn most of the models we have seen up to this point.
+
+## Regression Review
+
+We give a brief reminder of some of the ideas of regression.
+
+Consider the `child_tasks` data set in the `fosdata` package. This gives the time that it takes
+children to complete various tasks such as the shape trail test. All the children were to connect the dots in order, alternating between circles and sqaures. Let's plot the time to completion versus age.
+
+```{r}
+cc <- fosdata::child_tasks
+ggplot(cc, aes(x = age_in_months, y = stt_cv_trail_b_secs)) + 
+  geom_point()
+```
+
+There seems to be a negative correlation betweeh the age and the time to complete the task. Let's plot a line of best fit on the chart.
+
+```{r}
+ggplot(cc, aes(x = age_in_months, y = stt_cv_trail_b_secs)) + 
+  geom_point() + 
+  geom_smooth(method = "lm")
+```
+
+Recall that we find the coefficients of the line of best fit by miniizing the SSE
+\[
+\sum_{i = 1}^n \bigl( \beta_0 + \beta_1 x_i - y_i \bigr)^2
+\]
+over all choices of $\beta_0$ and $\beta_1$. The R command to do this is `lm`. 
+
+```{r}
+mod <- lm(stt_cv_trail_b_secs ~ age_in_months, data = cc)
+summary(mod)
+```
+
+One assumption we have in order for the $p$-values and other inferences to make sense is that the residuals are independent and normally distributed.
+
+```{r}
+plot(mod)
+```
+
+These don't look too bad. Notice that we didn't ever test independence of the residuals, though. If the residuals are ordered in some natural way (especially if they are sampled over time), then we could create a correlogram, for example, to see whether there is serial correlation. 
+
+```{r}
+cc <- arrange(cc, age_in_months)
+mod <- lm(stt_cv_trail_b_secs ~ age_in_months, data = cc)
+acf(mod$residuals)
+```
+
+These do not appear to be correlated, though if we really wanted to be sure then we could do some more testing. An alternative method is to plot the cumulative sum of the residuals and see whether that falls outside of the bounds that would be expected if they were independent of the order.
+
+As another example, let's look at the stock price of Apple from October-December of 2019. As we can see in the Residuals vs Fitted plot, there is a definite trend in the residuals of the model, and the residuals are not independent.
+
+```{r}
+quantmod::getSymbols("AAPL")
+aa <- AAPL$AAPL.Adjusted
+library(zoo)
+library(stringr)
+aa <- aa[str_detect(index(aa), "2019\\-1[012]")]
+plot(aa)
+aa$time <- 1:nrow(aa)
+names(aa) <- c("adjusted", "time")
+ggplot(aa, aes(x= time, y = adjusted)) + 
+  geom_point() + 
+  geom_smooth(method = "lm")
+
+mod <- lm(adjusted ~ time, data = aa)
+plot(mod, which = 1)
+
+```
+
+We can also see this with a correlogram of the residuals.
+
+```{r}
+acf(residuals(mod))
+```
+
+In other examples, however, we won't be able to see the correlation directly in the residual plot and will need to examine the correlations. Let's consider the high temperatures in St Charles for the first 90 days of 1893.
+
+```{r}
+tt <- tswrdata::stltemp[1:90,]
+tt$time <- 1:90
+ggplot(tt, aes(x = time, y = tmax)) + 
+  geom_point() + 
+  geom_smooth(method = "lm")
+mod <- lm(tmax ~ time, data = tt)
+summary(mod)
+plot(mod)
+```
+
+This all looks good. However, the residuals are correlated as seen below.
+
+```{r}
+acf(residuals(mod))
+```
+
+What is wrong with having dependent residuals? Let's find out in the exciting continuation.
 
 ## One predictor {#onepredictor}
 
@@ -73,27 +171,7 @@ mean(sim_data < .05)
 So, we see that the effective type I error rate when the residuals are positively correlated is closer to 0.22 than to the desired 0.05. 
 We will need to take care of this if we want to do inference on the slope, or even if we want to get confidence intervals for the slope.
 
-::: exercise
-You have seen a similar phenomenon before in _paired t-tests_. Simulate paired data in the following way.
-Let $X_1, \ldots, X_{30}$ be independnet normal with mean 0 and standard deviation 2.
-Let $Y_i = X_i + Z_i$, where $Z_i$ is indpendent standard normal.
-Estimate the effective type I error when doing a two-sample $t$-test of $H_0: \mu_X = \mu_Y$ versus $\mu_X \not= \mu_Y$ on $X$ and $Y$ at $\alpha = .05$ level.
-:::
 
-::: exercise
-What if the residuals are negatively correlated at lag 1? Re-do the simulation with AR(1) residuals that have negative correlation, and see what happens to the effective type I error rate.
-:::
-
-::: exercise
-Use the exact simulation as in the text, but now consider confidence intervals defined in the textbook by plys or minus 2 times the standard error of the estimator. The standard error of the estimator can be obtained through `sqrt(diag(vcov(mod)))`. What percentage of times is the true slope in the 95 percent confidence interval as constructed this way?
-:::
-
-::: exercise
-Consider the `samarket` data in the `tswr` package. 
-
-1. Create a linear model of the price of the SA 40 as an affine function of the USD/ZAR exchange rate.
-2. Create an `acf` plot of the residuals and comment as to whether the residuals appear independent.
-:::
 
 ## Linear Regression with One Predictor {#lrwop}
 
@@ -537,20 +615,7 @@ z_i = .5086 z_{i - 1} + .2707 z_{i - 2} + w_i
 
 where $w_i$ are iid normal random variables.
 
-::: {.exercise #ex:simulationchapter5}
-Simulate a time series of length 200 that has AR(1) error with coefficient 0.6 and that follows the following trend:
-\[
-y_t = .2 + .3 * t + .4 * \cos(Bt) + .1 * \sin(Bt) + z_t
-\]
-where $B$ is chosen to make the time series have period 10.
-:::
 
-::: {.exercise #ex:modelfitchapter5}
-Fit a harmonic model to the simulated data from Exercise \@ref(ex:simulationchapter5). 
-
-a. Are the true parameter values within 2 standard errors of the point estimates?
-b. Are the residuals independent? Find the AR(1) estimate of the coefficient and see whether it is close to the 0.6 that you used to create the data.
-:::
 
 
 ## Logarithmic Transform
@@ -651,14 +716,220 @@ In this example, we look at the `electricity` data set from the `tswrdata` packa
 
 ## Exercises
 
+::: {.exercise #ex:palmer}
+Consider the `penguins` data set in the `palmerpenguins` package. Create a linear model of flipper length as described by bill length for Adelie penguins.
+
+a. What is the line of best fit?
+b. Order the penguins data by bill length. Do the residuals appear to be serially correlated?
+:::
+
+::: {.solution #hide:palmer}
+```{r}
+pp <- palmerpenguins::penguins %>% 
+  filter(species == "Adelie") %>% 
+  arrange(bill_length_mm)
+ggplot(pp, aes(x = bill_length_mm, y = flipper_length_mm)) + 
+  geom_point() + 
+  geom_smooth(method = "lm")
+mod <- lm(flipper_length_mm ~ bill_length_mm, data = pp)
+summary(mod)
+```
+
+The line of beset fit is $y = 158.9 + 0.8 x$.
+
+```{r}
+acf(residuals(mod))
+```
+
+There is no evidence of serial correlation.
+:::
+
+::: {.exercise #ex:cci}
+Consider the `cci` data set in the `tswrdata` package. This gives the US consumer confidence index for 41 consecutive months.
+
+a. Find the line of best fit and examine the residuals using `plot(mod)`.
+b. Examine whether the residuals are auto-correlated.
+:::
+
+::: {.solution #hide:cci}
+```{r}
+cci <- tswrdata::cci
+plot(cci, type = "l")
+cci <- data.frame(cci = cci, time = 1:41)
+mod <- lm(cci ~ time, data = cci)
+summary(mod)
+plot(mod)
+```
+
+This doesn't look too bad, except that if you look carefully at the residuals versus fitted you might be able to see some autocorrelation.
+
+```{r}
+acf(residuals(mod))
+```
+
+Definitely auto-correlated!
+
+:::
+
+
+::: exercise
+You have seen a phenomenon of dependent residuals before in _paired t-tests_. Simulate paired data in the following way.
+Let $X_1, \ldots, X_{30}$ be independent normal with mean 0 and standard deviation 2.
+Let $Y_i = X_i + Z_i$, where $Z_i$ is indpendent standard normal.
+Estimate the effective type I error when doing a two-sample $t$-test of $H_0: \mu_X = \mu_Y$ versus $\mu_X \not= \mu_Y$ on $X$ and $Y$ at $\alpha = .05$ level.
+:::
+
+::: {.exercise #ex:negresid}
+What if the residuals are negatively correlated at lag 1? Re-do the simulation in Section \@ref(onepredictor) with AR(1) residuals that have **negative** correlation, and see what happens to the effective type I error rate.
+:::
+
+::: {.solution hide:negresid}
+```{r}
+u <- cumsum(rnorm(100))
+sim_data <- replicate(1000, {
+  w <- rnorm(100, sd = 5)
+  z <- w[1]
+  for (i in 2:100) z[i] <- -0.5 * z[i - 1] + w[i]
+  x <- 1 + z
+  summary(lm(x ~ u))$coeff[2, 4]
+})
+hist(sim_data)
+mean(sim_data < .05)
+```
+With negatively correlated residuals, we see that the effective type I error rate is too low. This will result in a loss of power associated with the test.
+:::
+
+::: exercise
+Use the exact simulation as in the text from Section \@ref(onepredictor), but now consider confidence intervals defined in the textbook by plus or minus 2 times the standard error of the estimator. The standard error of the estimator can be obtained through `sqrt(diag(vcov(mod)))`. What percentage of times is the true slope in the 95 percent confidence interval as constructed this way?
+:::
+
+::: {.exercise #ex:zzz}
+**This is a bad question** Consider the `samarket` data in the `tswr` package. 
+
+1. Create a linear model of the price of the SA 40 as an affine function of the USD/ZAR exchange rate.
+2. Create an `acf` plot of the residuals and comment as to whether the residuals appear independent.
+:::
+
+::: {.solution #hide:zzz}
+
+This wasn't a very good question! The data doesn't look appropriate for a linear model at all.
+
+```{r}
+ss <- tswrdata::samarket
+ggplot(ss, aes(x = zar_usd, y = sa40)) + 
+  geom_point() + 
+  geom_smooth(method = "lm")
+```
+
+Nonetheless, if we try to do it, this is what we get.
+
+```{r}
+mod <- lm(sa40 ~ zar_usd, data = ss)
+summary(mod)
+```
+
+The residuals are terrible in so many ways.
+
+```{r}
+plot(mod)
+acf(residuals(mod))
+```
+
+:::
+
+::: {.exercise #ex:cigsdecor}
+Consider the `cigs` data set in the `fosdata` package. 
+
+a. Plot `tar` versus `nic` and comment on whether data appears correlated.
+b. What is the $2 \times 2$ covariance matrix of `tar` and `nic`?
+c. Find a matrix $A$ such that the data multiplied by $A^{-1}$ is uncorrelated.
+d. Plot the data multiplied by $A^{-1}$.
+:::
+
+
+::: {.solution #hide:cigsdecor}
+
+```{r}
+cc <- fosdata::cigs
+cc <- select(cc, tar, nic)
+plot(cc$nic, cc$tar)
+```
+
+Correlated.
+
+```{r}
+cov(cc, use  = "complete.obs")
+```
+
+This is the covariance matrix.
+
+```{r}
+covmat <- matrix( cov(cc, use  = "complete.obs"), nrow = 2 )
+a <- chol(covmat)
+a #this is a matrix that decorrelates the data
+cov(as.matrix(cc) %*% solve(a), use = "complete")
+```
+
+```{r}
+plot(as.matrix(cc) %*% solve(a))
+```
+
+As we can see, the transformed data appears to be uncorrelated.
+
+:::
+
+
+
+
 ::: {.exercise #ex:ezregressionsim}
 In this data, you are to simulate data and model it.
 
-a. Simulate data for $t = 0, \ldots, 100$ that follows the generative process $y_t = 2 + 5 t - 0.1 t^2 + z_t$, where $z_t$ is an AR(1) process $z_t = 0.4 z_{t - 1} + w_t$ and $w_t$ are iid normal random variables with standard deviation 5. 
+a. Simulate data for $t = 0, \ldots, 100$ that follows the generative process $y_t = 2 + 5 t - 0.1 t^2 + z_t$, where $z_t$ is an AR(1) process $z_t = 0.4 z_{t - 1} + w_t$ and $w_t$ are iid normal random variables with standard deviation 100. 
 b. Use `lm` to fit a quadratic trend to the series. What are the coefficients?
 c. Find a 95 percent confidence interval for the coefficients and comment.
 d. Plot the correlogram of the residuals and comment.
 e. Refit the model using `gls`. Find 95 percent confidence intervals for the coefficients and compare to part c. 
+:::
+
+::: {.solution #hide:ezregressionsim}
+
+```{r}
+set.seed(4840)
+t <- 0:100
+w <- rnorm(101, 0, 100)
+z <- w[1]
+for(i in 2:101) z[i] <- 0.4 * z[i - 1] + w[i]
+y <- 2 + 5 * t + 0.1 * t^2 + z
+plot(t, y)
+t2 <- t^2
+mod <- lm(y ~ t + t2)
+summary(mod)
+```
+
+c. 
+
+```{r}
+confint(mod)
+```
+
+Contains the true values.
+
+d. 
+
+```{r}
+acf(residuals(mod))
+```
+
+e. 
+
+```{r}
+library(nlme)
+mod2 <- gls(y ~ t + t2, correlation = corAR1(0.4))
+confint(mod2)
+summary(mod2)
+```
+
+The confidence intervals are wider, as expected.
 :::
 
 ::: {.exercise #ex:aussiewine}
@@ -672,14 +943,156 @@ e. Re-do your model in part b using `gls` with an AR(1) model for the errors.
 f. Find a 95 percent confidence interval for the slope and compare to c. Comment on which one you believe to be a more appropriate 95 percent confidence interval.
 :::
 
+::: {.solution #hide:aussiewine}
+a. 
+```{r}
+ww <- tswrdata::wine  
+plot(ww$year, ww$wine_cons)
+```
+
+b.
+```{r}
+mod <- lm(wine_cons ~ year, data = ww)
+confint(mod)
+```
+
+c. 
+Slope is between 1154 and 1261.
+
+d. 
+```{r}
+acf(resid(mod))
+```
+ Appear correlated. The confidence interval in (b) should be wider.
+ 
+```{r}
+ar(resid(mod), order.max = 1)
+mod2 <- gls(wine_cons ~ year, data = ww, correlation = corAR1(.9158))
+confint(mod2)
+```
+
+The confidence interval is much wider, $[851, 1449]$. 
+
+:::
+
 ::: {.exercise #ex:tsastats}
-Consider the TSA throughput data in `tsa` in the `tswrdata` package. This data gives the number of passengers screened by TSA at various airports and times in the first quarter of 2018.
+Consider the TSA throughput data in `tsa` in the `tswrdata` package. This data gives the number of passengers screened by TSA at various airports and times in the first quarter of 2020
 
 a. Create a new data frame that has one entry per date, which contains the date, total number of passengers screened, the day of week and time (number of days since start of year).
-b. Plot total passengers screened versus date. Does the plot appear linear?
+b. Plot total passengers screened versus date. Does the plot appear linear? The first two weeks are vacation, and the values after early March are when COVID caused a lot of people to stop flying. Restrict the data to January 10 through March 7.
 c. Create a model of total passengers screened versus time, treating the day of week as a seasonal variable, using `lm`.
-d. Examine the residuals. Do they appear correlated?
-e. Create a  model as in part (c) using `gls` with an AR(1) residual  model.
-f. Create a model as in part (f) but **adding a quadratic term** `I(time^2)` to the model.
-g. Which model from (c), (e) or (f) would you recommend?
+d. Examine the residuals. Do they appear correlated? 
 :::
+
+
+::: {.solution #hide:tsastats}
+
+This is a bad problem because there is missing dates in the data.
+
+```{r}
+library(tidyverse)
+tsa <- tswrdata::tsa
+tsa <- tsa %>% 
+  group_by(date) %>% 
+  summarize(passengers = sum(passengers, na.rm = T),
+            day = factor(day[1]),
+            time = time[1])
+ggplot(tsa, aes(x = date, y = passengers)) + 
+  geom_line()
+```
+
+
+```{r}
+library(lubridate)
+tsa %>% 
+  filter(date >= ymd("2020-01-10") & date <= ymd("2020-03-07")) %>% 
+  ggplot(aes(x = date, y = passengers)) + 
+  geom_point()
+
+tsas <- tsa %>% 
+  filter(date >= ymd("2020-01-10") & date <= ymd("2020-03-07"))
+```
+
+```{r}
+mod <- lm(passengers ~ time + day, data = tsas)
+summary(mod)
+acf(resid(mod))
+```
+
+Yes, the residuals are correlated.
+:::
+
+
+::: {.exercise #ex:samarketgls}
+Let's fix the `samarket` problem from above. Restrict to **February** and **March** of 2019, and create a linear model using `lm` of `sa40` as described by `zar_usd`.
+
+a. Write out the line of best fit.
+b. Do the residuals appear independent?
+c. Re-do with `gls` using an AR(1) model for the residuals.
+d. Compare the $p$-values associated with the slope in your `lm` model and your `gls` model. Which would you recommend?
+:::
+
+::: {.solution #hide:samarketgls}
+
+```{r}
+ss <- tswrdata::samarket
+
+ggplot(ss, aes(x = zar_usd, y = sa40)) + 
+  geom_point() + 
+  geom_smooth(method = "lm")
+```
+
+Let's instead restrict to a time period where a linear model might be appropriate. We restrict to February-March, 2019.
+
+```{r}
+ss_2019 <- filter(ss, str_detect(date, "2019-0[23]"))
+ggplot(ss_2020, aes(x = zar_usd, y = sa40)) + 
+  #geom_line() + 
+  geom_point()
+```
+
+This at least looks plausible for a linear model.
+
+```{r}
+mod <- lm(sa40 ~ zar_usd, data = ss_2019)
+summary(mod)
+
+acf(resid(mod))
+```
+
+
+The model is Price = 21000 + 2000 * zar/usd exchange rate. The correlogram indicates that the residuals are **not** independent. They might be well modeled with an AR(1) process.
+
+```{r}
+acf(residuals(mod))
+ar(resid(mod))
+
+library(nlme)
+
+mod2 <- gls(sa40 ~ zar_usd, 
+            data = ss_2019[complete.cases(ss_2019),], 
+            correlation = corAR1(value = .7679))
+summary(mod2)
+confint(mod2)
+confint(mod)
+```
+:::
+
+
+
+::: {.exercise #ex:simulationchapter5}
+Simulate a time series of length 200 that has AR(1) error with coefficient 0.6 and that follows the following trend:
+\[
+y_t = .2 + .3 * t + .4 * \cos(Bt) + .1 * \sin(Bt) + z_t
+\]
+where $B$ is chosen to make the time series have period 10.
+:::
+
+::: {.exercise #ex:modelfitchapter5}
+Fit a harmonic model to the simulated data from Exercise \@ref(ex:simulationchapter5). 
+
+a. Are the true parameter values within 2 standard errors of the point estimates?
+b. Are the residuals independent? Find the AR(1) estimate of the coefficient and see whether it is close to the 0.6 that you used to create the data.
+:::
+
+
