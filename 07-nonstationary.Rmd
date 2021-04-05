@@ -1,0 +1,71 @@
+# Non-Stationary Models {#nonstationarymodels}
+
+```{r child = 'pre-chapter-script.Rmd'} 
+```
+
+## ARIMA models {#arimamodels}
+
+In the previous chapter, we introduced ARMA(p, q) models, which are flexible models for modeling stationary processes. Now, we introduce ARIMA models, which are autoregressive integrated moving average models. These models, and their seasonal variants, are an even more flexible class of models, and can be used to fit a wide range of data. That flexibility comes at a cost, though, in terms of complexity to fit models as well as in interpretation. 
+
+We start by explaining what the *integrated* part of an ARIMA model means. This means that we **difference** the data 1 or more times. Differencing a time series will remove a linear trend from the time series, and it will also convert a random walk into white noise. Let's remind ourselves why.
+
+If $x_t$ is a random walk, then $x_t = x_{t - 1} + w_t$, where $w_t$ is white noise. We simply solve for $x_{t} - x_{t - 1}$ and see that the differenced time series is white noise. If $x_t$ has a linear trend, then $x_t = a + bt + w_t$, where $w_t$ is white noise. In this case, $x_{t - 1} = a + bt - b + w_{t - 1}$, so we compute
+\begin{align*}
+x_t - x_{t - 1} &= a + bt + w_t - a - bt + b - w_{t - 1} \\
+&=b + w_t - w_{t - 1}
+\end{align*}
+So, we see that the differenced time series is a MA(1) process with mean $b$.
+
+Let's verify both of the previous claims via simulations. We start with white noise.
+
+```{r}
+x <- cumsum(rnorm(100))
+plot(x)
+y <- diff(x)
+plot(y)
+acf(y)
+```
+
+Indeed, the differenced time series seems to be white noise. Now let's look at a linear trend.
+
+```{r}
+a <- 1
+b <- 2
+t <- 1:100
+x <- a + b * t + rnorm(100)
+plot(t, x)
+
+y <- diff(x)
+plot(y) #this should be MA with mean b
+arima(y, order = c(0, 0, 1), include.mean = T)
+```
+
+The value of the intercept is very close to $b$, and the coefficient is close to the correct value of $-1$. We check that the residual of **this** model is white noise.
+
+```{r}
+acf(resid(arima(y, order = c(0, 0, 1), include.mean = T)))
+```
+
+In general, if you have a trend that is polynomial of degree $n$, then taking $n$ differences will make the series a stationary MA(n) model. See, for example, \@ref(ex:squarediff).
+
+## Exercises
+
+::: {.exercise #ex:squarediff}
+Suppose $x_t = a + bt + ct^2 + w_t$. What kind of series is the **twice differenced** time series? That is, let $y_t = x_t - x_{t - 1}$ and $u_t = y_t - y_{t - 1}$; I am asking about $u_t$.
+:::
+
+::: {.solution #hide:squarediff}
+\begin{align*}
+y_t &= x_t - x_{t - 1}\\
+&=a + bt + ct^2 + w_t - a - bt + b - ct^2 + 2ct - c - w_{t - 1}\\
+&=b - c + 2ct + w_t - w_{t - 1}
+\end{align*}
+
+Therefore, 
+\begin{align*}
+u_t&= y_t - y_{t - 1}\\
+&=b - c + 2ct + w_t - w_{t - 1} - b + c - 2ct + 2c - w_{t - 1} + w_{t - 2}\\
+&=2c + w_t - 2w_{t - 1} + w_t
+\end{align*}
+So the twice differenced series is a MA(2) process that has been shifted up.7
+:::
