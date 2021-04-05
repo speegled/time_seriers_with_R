@@ -1,5 +1,8 @@
 # Stationary Models {#stationarymodels}
 
+```{r child = 'pre-chapter-script.Rmd'} 
+```
+
 In Chapter \@ref(regressiontechniques), we modelled trends and seasonality of various time series. The residuals left over after modelling the trend and seasonality then need to be modelled in order to get a satisfactory final model. This leads us to the concept of stationary models. 
 
 ::: definition
@@ -26,8 +29,9 @@ A moving average model of order $q$ models a time series via the following patte
 x_t = w_t + \beta_1 w_{t - 1} + \cdots + \beta_q w_{t - q}
 \]
 
-for some choice of $\beta_1, \ldots, \beta_q$. Let's start by simulating some MA(1) and MA(2) processes and see what their plots and correlogram plots look like.
+where $w_t$ are iid normal random variables for some choice of $\beta_1, \ldots, \beta_q$. Let's start by simulating some MA(1) and MA(2) processes and see what their plots and correlogram plots look like.
 
+The following is an MA(1) process with coefficient $.5$.
 ```{r}
 xs <- rnorm(200)
 w <- xs[1]
@@ -36,6 +40,7 @@ plot(w, type = "l")
 acf(w)
 ```
 
+And here is an $MA(2)$ process with coefficients $.5$ and $.3$.
 ```{r}
 xs <- rnorm(200)
 w <- xs[1]
@@ -79,6 +84,10 @@ where $\beta_0 = 1$.
 
 In practice when we see correlograms they may not match the autocorrelation function due to random sampling. Recall that 1 in 20 of the sample autocorrelations that are not significant should have values that extend past the dashed line in the acf plot.
 
+::: tryit
+Create several $MA(q)$ processes and plot their correlograms and `pacf` plots.
+:::
+
 ## Fitting MA models {#fittingmamodels}
 
 Fitting MA models, i.e. finding the best values for $\beta_1, \ldots, \beta_q$ can be tricky, though the implementation in R is straightforward. Let's look at an example of how we can do it. First we simulate some data.
@@ -100,7 +109,7 @@ x_t = ss_t - \beta_1 \hat x_{t - 1} + \beta_2 \hat x_{t - 2}.
 \]
 
 Note that when we have the true values of $\beta_1$ and $\beta_2$, the $x_t$ should be pretty good approximations for the original white noise process. 
-We minimize the sum of squareds of the $(x_t)$ in order to estimate $\beta_1$ and $\beta_2$. Let's see how it works. 
+We minimize the sum of squares of the $(x_t)$ in order to estimate $\beta_1$ and $\beta_2$. Let's see how it works. 
 
 ```{r}
 beta_1 <- .5 
@@ -127,26 +136,300 @@ arima(ss, order = c(0, 0, 2), method = "CSS", include.mean = F)
 ```
 
 
-::: exercise
-This exercise investigates simulations of MA processes and by hand estimates of the parameters.
 
-a. Simulate data of length 300 that is MA(3) with parameters $beta_0 = .4$, $\beta_1 = .5$ and $\beta_2 = .2$. 
-b. Use the `optim` function as above to estimate the values of $\beta_i$ without subtracting the mean of the data.
-c. Confirm your approach by using `arima` with options `method = "CSS"` and `include.mean = F`. 
+
+## Fitting ARMA models {#fittingarmamodels}
+
+An _ARMA_(p, q) model starts with white noise $w_t$ with some standard deviation $\sigma$, and coefficeints $\alpha_1, \ldots, \alpha_p$ and $\beta_1,\ldots, \beta_q$. The model for the variable $y_t$ is a combination of the $AR$ and the $MA$ models that we have studied previously:
+\[
+y_t = w_t + \sum \alpha_i y_{t - i} + \sum \beta_i w_{t - i}
+\]
+
+To fit an ARMA model, we will use the `arma` function. Let's look at an example.
+
+::: example
+Consider the quarterly pound-New Zealand dollar exchange rate data in `tswrdata::pound_nz`.
+
+```{r}
+pp <- tswrdata::pounds_nz$xrate
+plot(pp, type = "l")
+acf(pp)
+```
+
+We first try to model this as an $MA(1)$ or an $AR(1)$ process, and we see that neither is sufficient.
+
+```{r}
+mod_ar <- arima(pp, order = c(1, 0, 0))
+acf(resid(mod_ar))
+
+mod_ma <- arima(pp, order = c(0, 0, 1))
+acf(resid(mod_ma))
+```
+
+Next, we consider second order models $AR(2)$, $MA(2)$ and $ARMA(1, 1)$.  
+
+```{r}
+mod_ar2 <- arima(pp, order = c(2, 0, 0))
+acf(resid(mod_ar2))
+
+mod_arma <- arima(pp, order = c(1, 0, 1))
+acf(resid(mod_arma))
+```
+
+We see that the $ARMA(1, 1)$ model has white uncorrelated residuals, as does the $AR(2)$ process. How do we decide between the two? A common technique is to use the _Akaike Information Criterion_.
+
+```{r}
+AIC(mod_ar2)
+AIC(mod_arma)
+```
+
+We choose the model that has the **lower** AIC; in this case, we choose the $ARMA(1, 1)$ model.
 :::
 
-::: exercise
-Consider the following pairs of `acf` and `pacf` plots. Which pair(s) is/are unlikely to have come from a moving average process?
+### AIC
+
+Wait a minute. We just introduced AIC in the previous section like everybody already knows what that is. That might be true for some of you, but probably not for everyone. So let's dig in!
+
+First things first, the AIC is intended to be a method for choosing between multiple models that have been built on the same data set. The number that you get doesn't have any meaning except in relation to that data set, so you ~~can't~~ shouldn't compare AIC values when your data is different.
+
+To understand the AIC, we first have to talk about the likelihood function of a model. The likelihood function is a lot like a probability density function, as we will see in the following simple example.
+
+::: example
+Suppose we are trying to decide how to model the data set $x = c(1, 2, 1)$. One model would be that it is normal data with $\mu = 4/3$ and the standard deviation is $\sigma = 0.5773503$. The **likelihood** of this model is the product of the pdf at the three data points:
+
+```{r}
+prod(dnorm(c(1, 2, 1), 4/3, 0.5773503))
+```
+
+Another model would be that it is normal with mean $\mu = 4/3$ and standard deviation $\sigma = 0.4714045$. (This is the value of the standard deviation with $n$ in the denominator rather than $n - 1$.) The likelihood of this model is
+
+```{r}
+prod(dnorm(c(1, 2, 1), 4/3, 0.4714045))
+```
+
+We see that the data is more likely in the second model, so it would be natural to choose the second model rather than the first model.
+:::
+
+This works well as long as the number of parameters are the same in both models. As we increase the number of parameters, we would expect to increase the likelihood function. AIC gives a way for us to take that into account. 
+
+::: definition
+The AIC of a model is defined to be 
+\[
+-2ln(L) + 2k
+\]
+where $L$ is the likelihood of the data under the model and $K$ is the number of parameters that are in the model.
+:::
+
+::: example
+Let's return to our simple example; our data is `c(1,1,2)`. What if we were to model this as Poisson with mean $4/3$? The likelihood function is
+
+```{r}
+prod(dpois(c(1,1,2), lambda = 4/3))
+```
+This is much lower than the value that we got with the normal model, but it also uses one less parameter! If we compute the AIC of both, we get:
+
+```{r}
+-2 * log(prod(dpois(c(1,1,2), lambda = 4/3))  ) + 2
+-2 * log( prod(dnorm(c(1, 2, 1), 4/3, 0.4714045)) ) + 4
+```
+We see that the normal model has a lower AIC, and is preferred over the Poisson  model for this data set.
+:::
+
+::: alert
+I have simplified things very much in the above example to give you an idea how AIC works. There are a lot of details to know before saying that you completely understand it. In particular, it is not recommended to use AIC for data when you have 3 data points and 2 parameters! AIC is an asymptotically good measure, which means that as the number of data points gets big, it is a good way to measure the difference between data sets.
+:::
+
+::: example
+Let's create a data set of size 4 that really is exponential, and see what percentage of time the AIC criterion correctly chooses the normal model.
+
+
+```{r}
+dat <- rexp(4, 1)
+mu <- mean(dat)
+sd <- sd(dat)
+
+-2 * sum(dnorm(x = dat, mean = mu, sd = sd, log = TRUE)) + 2 * 2 > 
+ -2 * sum(dexp(x = dat, rate = 1/mu, log = TRUE)) + 1 * 2
+
+mean(replicate(10000, {
+  dat <- rexp(4, 1)
+mu <- mean(dat)
+sd <- sd(dat)
+
+-2 * sum(dnorm(x = dat, mean = mu, sd = sd, log = TRUE)) + 2 * 2 > 
+ -2 * sum(dexp(x = dat, rate = 1/mu, log = TRUE)) + 1 * 2
+}))
+```
+
+We see that about 80 percent of the time, it chooses the correct model. That's not too bad with only four data points! If we take larger samples, then it will do a better job.
+
+```{r}
+mean(replicate(10000, {
+  dat <- rexp(10, 1)
+mu <- mean(dat)
+sd <- sd(dat)
+
+-2 * sum(dnorm(x = dat, mean = mu, sd = sd, log = TRUE)) + 2 * 2 > 
+ -2 * sum(dexp(x = dat, rate = 1/mu, log = TRUE)) + 1 * 2
+}))
+
+mean(replicate(10000, {
+  dat <- rexp(40, 1)
+mu <- mean(dat)
+sd <- sd(dat)
+
+-2 * sum(dnorm(x = dat, mean = mu, sd = sd, log = TRUE)) + 2 * 2 > 
+ -2 * sum(dexp(x = dat, rate = 1/mu, log = TRUE)) + 1 * 2
+}))
+```
+:::
+
+We can also use the AIC as a substitute for $t$-tests, see Exercise \@ref(ex:aicttest). Here is an example of a two-sample $t$-test.
+
+::: example
+Let's create simulated data with $X \sim N(0, 1)$ and $Y \sim N(0.5, 1)$. We wish to test whether $\mu_X = \mu_Y$. To do so, we look at the combined likelihood of all the data under the two models. One model is unknown means and standard deviations of $X$ and $Y$, while the other is the same but with **equal** means. The first model has 4 parameters and the second has 3 parameters.
+
+```{r}
+x <- rnorm(40)
+y <- rnorm(40, 0.5, 1)
+t.test(x, y)
+power.t.test(n = 40, delta = .5)
+```
+
+This set-up should have power about 60 percent for $t$-test.
+
+```{r}
+muxy <- mean(c(x, y))
+sdx <- sd(x)
+sdy <- sd(y)
+mux <- mean(x)
+muy <- mean(y)
+aic_1 <- -2 * sum(dnorm(x, muxy, sdx, log = T))  + -2 * sum(dnorm(y, muxy, sdy, log = TRUE)) + 6
+aic_1
+aic_2 <- -2 * sum(dnorm(x, mux, sdx, log = T))  + -2 * sum(dnorm(y, muy, sdy, log = TRUE)) + 8
+aic_1 > aic_2 #if true we reject the null hypothesis
+```
+
+```{r}
+mean(replicate(10000, {
+  x <- rnorm(40)
+  y <- rnorm(40, 0.5, 1)
+  muxy <- mean(c(x, y))
+  sdx <- sd(x)
+  sdy <- sd(y)
+  mux <- mean(x)
+  muy <- mean(y)
+  aic_1 <- -2 * sum(dnorm(x, muxy, sdx, log = T))  + 
+    -2 * sum(dnorm(y, muxy, sdy, log = TRUE)) + 6
+  aic_2 <- -2 * sum(dnorm(x, mux, sdx, log = T))  + 
+    -2 * sum(dnorm(y, muy, sdy, log = TRUE)) + 8
+  aic_1 > aic_2 #if true we reject the null hypothesis
+}))
+```
+
+This has power 80 percent, but we don't know what the type I error rate is.
+
+```{r}
+mean(replicate(10000, {
+  x <- rnorm(40)
+  y <- rnorm(40, 0, 1)
+  muxy <- mean(c(x, y))
+  sdx <- sd(x)
+  sdy <- sd(y)
+  mux <- mean(x)
+  muy <- mean(y)
+  aic_1 <- -2 * sum(dnorm(x, muxy, sdx, log = T))  + 
+    -2 * sum(dnorm(y, muxy, sdy, log = TRUE)) + 6
+  aic_2 <- -2 * sum(dnorm(x, mux, sdx, log = T))  + 
+    -2 * sum(dnorm(y, muy, sdy, log = TRUE)) + 8
+  aic_1 > aic_2 #if true we reject the null hypothesis
+}))
+```
+
+The type I error rate is close to 15 percent.
+:::
+
+Finally, we do a variable selection problem in regression using the AIC. We create simulated data that depends on `x` strongly and has some weaker dependence on `v`. 
+
+```{r}
+set.seed(4840)
+x <- runif(300, 0, 10)
+v <- runif(300, 0, 10)
+y <- .1 * x + 0.02 * v + rnorm(300)
+
+mod1 <- lm(y ~ x)
+mod2 <- lm(y ~ x + v)
+mod1
+```
+
+The question is how we can use AIC to decide whether the model 1: `y ~ x` or model 2: `y ~ x + v` is better. In order to do so, we need to consider the likelihood functions of the data under the two models. Under model 1, we have $y = .04196 + .09504 x + \epsilon$, where $\epsilon \sim N(0, 1.012)$. That is, $y \sim N(0.04196 + 0.9504 x, 1.012)$. We have estimated 3 parameters; the slope, intercept and $\sigma$.  The AIC can be computed by
+
+```{r}
+-2 * sum(dnorm(y, mean = .04196 + .09504 * x, sd = 1.012, log = TRUE)) + 2 * 3
+AIC(mod1)
+```
+
+For the other model, we have
+
+```{r}
+-2 * sum(dnorm(y, mean = -.05252 + .09752 * x + .01603 * v, sd =  1.013, log = TRUE)) + 2 * 4
+AIC(mod2)
+```
+
+Since the AIC is smaller in the first model, we prefer it and remove the variable `v` from the model.
+
+## Exercises
+
+::: {.exercise #ex:mahand}
+This exercise investigates simulations of MA processes and by hand estimates of the parameters.
+
+a. Simulate data of length 300 that is MA(3) with parameters $beta_1 = .4$, $\beta_2 = .5$ and $\beta_3 = .2$ and has the standard deviation of the underlying white noise of 1.
+b. Use the `optim` function as above to estimate the values of $\beta_i$ without subtracting the mean of the data.
+c. Confirm your approach by using `arima` with options `method = "CSS"` and `include.mean = F`. You may not be able to get the exact answers, but they should be similar. 
+:::
+
+::: {.solution #hide:mahand}
+
+For (a)
+
+```{r}
+aa <- arima.sim(model = list(ma = c(.4, .5, .2)), sd = 1, n = 300)
+```
+
+(b)
+```{r}
+sse <- function(beta) {
+  beta_1 <- beta[1]
+  beta_2 <- beta[2]
+  beta_3 <- beta[3]
+  #ss <- ss - mean(ss) uncomment this to match arima call with include.mean = T
+  w <- aa[1]
+  w[2] <- aa[2] - beta_1 * w[1]
+  w[3] <- aa[3] - beta_1 * w[2] - beta_2 * w[1]
+  w[4] <- aa[4] - beta_1 * w[3] - beta_2 * w[2] - beta_3 * w[3]
+  for(i in 5:300) w[i] <- aa[i] - beta_1 * w[i - 1] - beta_2 * w[i - 2] - beta_3 * w[i - 3]
+  mean(w^2) #this is the thing we are minimizing
+}
+optim(beta <- c(.5, .4, .5), fn = sse)
+```
+
+```{r}
+arima(aa, method = "CSS", include.mean = FALSE, order = c(0, 0, 3))
+```
+:::
+
+::: {.exercise #ex:maplot}
+Consider the following pairs of `acf` and `pacf` plots. Each plot either comes from an $AR(p)$ or an $MA(q)$ process. Determine which one it is and provide the parameter $p$ or $q$.
 
 ```{r echo = FALSE}
-x1 <- arima.sim(300, model = list(ma = c(.6, .3)))
+x1 <- arima.sim(n = 300, model = list(ma = c(.7, .6), order = c(0,0,2)))
 old.par <- par(mfrow = c(1, 2))
 acf(x1)
 pacf(x1)
 ```
 
 ```{r echo = FALSE}
-x2 <- arima.sim(300, model = list(ma = c(.6)))
+x2 <- arima.sim(300, model = list(ma = c(.7)))
 old.par <- par(mfrow = c(1, 2))
 acf(x2)
 pacf(x2)
@@ -160,23 +443,167 @@ pacf(x3)
 ```
 :::
 
-::: exercise
-Consider the `zar_sd` variable in the `samarket` data set in the `tswrdata` package. 
+::: {.solution #hide:maplot}
+(a) is consistent with an MA(2) process
+
+(b) is consistent with an MA(1) process
+
+(c) is consistent with an AR(2) process
+:::
+
+::: {.exercise #ex:armamodel}
+Consider the `sim_data_3` data set in the `tswrdata` package. Find the best $ARMA(p, q)$ model that you can for modeling the data. 
+
+1. Report $p$, $q$ and $\sigma$ and the coefficients.
+2. Simulate 300 values from an $ARMA$ process with the values that you got in your model and compare to the original plot of the data. 
+:::
+
+::: {.solution #hide:armamodel}
+```{r}
+z <- tswrdata::sim_data_3
+plot(z, type = "l")
+acf(z)
+pacf(z)
+```
+
+Maybe AR(1), but looks like it has an MA component as well. Let's try ARMA(1,1).
+
+```{r}
+mod <- arima(z, order = c(1, 0, 1))
+acf(resid(mod)) 
+pacf(resid(mod))
+```
+
+Nope, that doesn't do it. Guessing we need to add to the MA component.
+
+```{r}
+mod <- arima(z, order = c(1, 0, 2))
+acf(resid(mod))
+```
+
+Looks good. It is clearly not MA(3), so let's try ARMA(2, 1) and ARMA(3, 0) and compare.
+
+```{r}
+AIC(mod)
+mod21 <- arima(z, order = c(2, 0, 1))
+AIC(mod21) #whoa dude
+mod30 <- arima(z, order = c(3, 0, 0))
+AIC(mod30)
+
+modfinal <-  arima(z, order = c(1, 0, 2), include.mean = F)
+AIC(modfinal)
+```
+
+The ARMA(2, 1) model with $\sigma^2 = 0.9909$ and AR coefficient $0.5451$ and MA coefficients $0.2074$ and $0.6252$ fits the data.
+
+To generate more data like this,
+
+```{r}
+plot(arima.sim(model = list(ar = c(0.5451), ma = c(0.2704, 0.6252)), 
+               sd = sqrt(.9909), 
+               n = 300), 
+     type = "l")
+```
+
+:::
+
+::: {.exercise #ex:mazarusd}
+**This is not a very good problem.** Consider the `zar_sd` variable in the `samarket` data set in the `tswrdata` package. 
 
 a. Plot the data versus time. Does there seem to be a trend or seasonality to consider? Use `HoltWinters` to model the time series.
 b. Examine the `acf` and `pacf` plots of the residuals. Does the data seem to be adequately explained by the model Holt Winters model?
 c. Fit a MA(1) process to the residuals. Is the constant statistically significant?
 :::
 
-## Fitting ARMA models {#fittingarmamodels}
+
+::: {.solution #hide:mazarusd}
+```{r}
+zz <- tswrdata::samarket
+zz <- zz$zar_usd[!is.na(zz$zar_usd)]
+plot(zz, type = "l")
+forecast::findfrequency(zz)
+```
+
+There may be a trend that Holt Winters would help with.
+
+```{r}
+mod <- HoltWinters(zz, beta = FALSE, gamma = FALSE)
+```
+
+```{r}
+acf(resid(mod))
+arima(resid(mod), order = c(0, 0, 2))
+```
+:::
+
+::: {.exercise #ex:aicttest}
+Create a random sample of size 40 from a normal distribution with mean 0 and standard deviation 1. Compare two models using AIC: 
+
+1. Find AIC for the model of normal with mean 0 and unkown standard deviation.
+2. Find AIC for the model of norma with mean `mean(data)` and unkown standard deviation.
+3. Which model would you choose?
+4. How does this relate to a $t$-test?
+5. Replicate the above to find the approximate percentage of time that one would reject the null hypothesis in this setting (and commit a type I error).
+:::
 
 
-## Exercises 
+::: {.solution #hide:aicttest}
 
-TBD
+```{r}
+dd <- rnorm(40)
+sd <- sd(dd)
+mu <- mean(dd)
+aic_1 <- -2 * sum(dnorm(dd, 0, sd, log = TRUE)) + 2
+aic_2 <- -2 * sum(dnorm(dd, mu, sd, log = TRUE)) + 4
+```
+
+We would choose the first model, which corresponds to failing to reject the hypothesis that the mean is 0.
+:::
+
+::: {.exercise #ex:likelihood}
+Suppose `dat <- c(1, 2, 1.7)` is a random sample of size three from a normal population with mean $\mu$ and standard deviation $\sigma$. In this problem, we find $\mu$ and $\sigma$ that jointly maximize the likelihood function of the data.
+
+a. The likelihood function of the data given `mu` and `sigma` is `prod(dnorm(dat, mu, sigma))`. 
+b. Use the `optim` function to find the values of `mu` and `sigma` that **maximize** the likelihood function. (Note that `optim` minimizes, so you will want to minimize the negative of the likelihood function.)
+c. Confirm that the values match $\overline{x}$ and $\sqrt{\frac 1n \sum_{k = 1}^3 \left(x_i - \overline{x}\right)^2}$.
+:::
 
 
+::: {.solution #hide:likelihood}
+```{r}
+dat <- c(1, 2, 1.7)
+ff <- function(pars) {
+  -prod(dnorm(dat, pars[1], pars[2]))
+}
 
+optim(par = c(1, 1), fn = ff)
+mean(dat)
+sqrt(1/3 * sum((dat - mean(dat))^2)) 
+```
+:::
 
+::: {.exercise #ex:aic1}
+Suppose `dat <- c(1, 2, 1.7)` is a random sample of size three from a normal population with mean $\mu$ and standard deviation $\sigma$.
 
+a. What is the AIC associated with the model $N(\mu, \sigma)$, where $\mu$ and $\sigma$ are both estimated from the data as in the previous problem?
+b. What is the AIC associated with the model $N(0, \sigma)$, where $\sigma$ is estimated from the data? (Use the estimate of $\sigma$ that maximizes the likelihood function when $\mu = 0$.)
+c. Which model would you choose?
+:::
 
+::: {.solution #hide:aic1}
+For (a), the value of the likelihood function is given in `optim`, so the AIC is
+```{r}
+-2 * log(0.1926046) + 2 * 2
+```
+
+For (b)
+```{r}
+ff <- function(sigma) {
+  prod(dnorm(dat, 0, sigma))
+}
+optimise(ff, interval = c(0.01, 10), maximum = T)
+-2 * log(0.003321658) + 2
+```
+
+We would choose model 1.
+:::

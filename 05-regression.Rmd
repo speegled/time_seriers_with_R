@@ -723,7 +723,7 @@ a. What is the line of best fit?
 b. Order the penguins data by bill length. Do the residuals appear to be serially correlated?
 :::
 
-::: {.solution #hide:palmer}
+::: {.solution #sol:palmer}
 ```{r}
 pp <- palmerpenguins::penguins %>% 
   filter(species == "Adelie") %>% 
@@ -751,7 +751,7 @@ a. Find the line of best fit and examine the residuals using `plot(mod)`.
 b. Examine whether the residuals are auto-correlated.
 :::
 
-::: {.solution #hide:cci}
+::: {.solution #sol:cci}
 ```{r}
 cci <- tswrdata::cci
 plot(cci, type = "l")
@@ -779,11 +779,11 @@ Let $Y_i = X_i + Z_i$, where $Z_i$ is indpendent standard normal.
 Estimate the effective type I error when doing a two-sample $t$-test of $H_0: \mu_X = \mu_Y$ versus $\mu_X \not= \mu_Y$ on $X$ and $Y$ at $\alpha = .05$ level.
 :::
 
-::: {.exercise #ex:negresid}
+::: {.exercise #sol:negresid}
 What if the residuals are negatively correlated at lag 1? Re-do the simulation in Section \@ref(onepredictor) with AR(1) residuals that have **negative** correlation, and see what happens to the effective type I error rate.
 :::
 
-::: {.solution hide:negresid}
+::: {.solution #hide:negresid}
 ```{r}
 u <- cumsum(rnorm(100))
 sim_data <- replicate(1000, {
@@ -1081,12 +1081,28 @@ confint(mod)
 
 
 ::: {.exercise #ex:simulationchapter5}
-Simulate a time series of length 200 that has AR(1) error with coefficient 0.6 and that follows the following trend:
+Simulate a time series of length 200 that has AR(1) error with coefficient 0.6 and standard deviation 1 and that follows the following trend:
 \[
 y_t = .2 + .3 * t + .4 * \cos(Bt) + .1 * \sin(Bt) + z_t
 \]
 where $B$ is chosen to make the time series have period 10.
 :::
+
+::: {.solution #hide:simulationchapter5}
+
+```{r}
+t <- 1:200
+errs <- arima.sim(model = list(ar = c(0.6)), n = 200)
+B <- 2*pi/10
+y <- .2 + .3 * t + .4 * cos(B * t) + .1 * sin(B * t) + errs
+sin1 <- sin(B * t)
+cos1 <- cos(B * t)
+lm(y ~ sin1 + cos1 + t)
+```
+
+
+:::
+
 
 ::: {.exercise #ex:modelfitchapter5}
 Fit a harmonic model to the simulated data from Exercise \@ref(ex:simulationchapter5). 
