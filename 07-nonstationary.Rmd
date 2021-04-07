@@ -46,7 +46,228 @@ The value of the intercept is very close to $b$, and the coefficient is close to
 acf(resid(arima(y, order = c(0, 0, 1), include.mean = T)))
 ```
 
-In general, if you have a trend that is polynomial of degree $n$, then taking $n$ differences will make the series a stationary MA(n) model. See, for example, \@ref(ex:squarediff).
+In general, if you have a trend that is polynomial of degree $n$, then taking $n$ differences will make the series a stationary MA(n) model. See, for example, \@ref(ex:squarediff). However, many times in simulations it can be hard to distinguish how many differences we need to include if we only use `acf` plots. Here is an example of a quadratic.
+
+```{r}
+t <- seq(0, 1, length.out = 1000)
+a <- 1 
+b <- -1
+d <- 2
+x <- a  + b * t + d * t^2 + rnorm(1000, 0, .05)
+plot(x)
+
+y <- diff(x, d = 1) 
+acf(resid(arima(y, order = c(0, 0, 1))))
+```
+
+The acf plot looks pretty much like white noise when we (incorrectly) only include one difference. Including a second difference does not seem to improve the situation.
+
+```{r}
+mod_1 <- arima(y, order = c(0, 0, 1))
+y2 <- diff(x, d = 2)
+mod_2 <- arima(y2, order = c(0, 0, 2))
+acf(resid(mod_2))
+```
+
+Therefore, at least from a theoretical point of view, we might like to use AIC to decide between two models of this type. Unfortunately, we can only use AIC when the underlying data is identical. In the set-up above, we are using two related, but different data sets.
+
+To get around this, we include the integrated term directly in the order specification.
+
+```{r}
+mod_1 <- arima(x, order = c(0, 1, 1))
+AIC(mod_1)
+mod_2 <- arima(x, order = c(0, 2, 2))
+AIC(mod_2)
+```
+
+Note that the quadratic model is preferred over the linear model in this case. However, if the quadratic term is smaller, we will often prefer the linear model. Let's confirm that going to a cubic model would be too much.
+
+```{r}
+mod_3 <- arima(x, order = c(0, 3, 3))
+AIC(mod_3)
+```
+
+However, when we correctly include two differencing terms, the AIC decreases. Going to a third difference typically makes the AIC increase again, as above. Let's check all of this out via a large simulations.
+
+```{r cache = TRUE}
+library(future.apply) #for parallel
+plan(multiprocess, workers = 6)
+aic_data <- future_replicate(200, {
+  x <- a  + b * t + d * t^2 + rnorm(1000, 0, .05)
+  mod_1 <- arima(x, order = c(0, 1, 1))
+  mod_2 <- arima(x, order = c(0, 2, 2))
+  mod_3 <- arima(x, order = c(0, 3, 3))
+  c(AIC(mod_1), AIC(mod_2), AIC(mod_3))
+})
+aic_data <- t(aic_data)
+mean(aic_data[,1] < aic_data[,2]) #percent of times we choose linear
+mean(aic_data[,3] < aic_data[,2]) #percent of times we choose cubic
+
+```
+
+That seems pretty good. Let's for kicks compare to what would have happened if we would have used `AIC` on the differenced data sets.
+
+```{r cache = TRUE}
+plan(multiprocess, workers = 6)
+dd2 <- future_replicate(1000, {
+  x <- a  + b * t + d * t^2 + rnorm(1000, 0, .05)
+  y2 <- diff(x, 2)
+  y3 <- diff(x, 3)
+  y1 <- diff(x, 1)
+  mod_1 <- arima(y1, order = c(0, 0, 1))
+  mod_2 <- arima(y2, order = c(0, 0, 2))
+  mod_3 <- arima(y3, order = c(0, 0, 3))
+  c(AIC(mod_1), AIC(mod_2), AIC(mod_3)) #DONT DO THIS
+})
+plan(sequential) #explicitly closes parallel processes
+dd2 <- t(dd2)
+mean(dd2[,1] < dd2[,2])
+mean(dd2[,3] < dd2[,2])
+```
+
+Oof. That's terrible.
+
+::: {.example #exm:ariprocess}
+Write out the model ARIMA(1, 1, 0) with AR coefficient .2 and standard deviation of the underlying white noise process 2.
+
+The model says that $x_t - x_{t - 1}$ is an ARMA(p, q) process with the given coefficients. Therefore, let $y_t = x_t - x_{t - 1}$.
+\[
+y_t = .2 y_{t - 1} + w_t
+\]
+where $w_t$ is white noise with standard deviation 2. In other words, solving for $x_t$, 
+\[
+x_t = 1.2 x_{t - 1} - .2 x_{t - 2} + w_t
+\]
+
+We can check our computation as follows:
+```{r}
+w <- rnorm(10000, 0, 2)
+x <- w[1]
+x[2] <- w[2]
+for(i in 3:10000) {
+  x[i] <- 1.2 * x[i - 1] - .2 * x[i - 2] + w[i]
+}
+arima(x[1001:10000], order = c(1, 1, 0))
+```
+:::
+
+:::tryit
+What would the equation be for an ARIMA(1, 1, 1) model with AR coefficient .5, MA coefficient .4 and standard deviation of the underlying white noise process 3?
+
+Verify via simulations.
+:::
+
+::: example
+Let's model the global temperature data using an ARIMA model. It can be kind of tricky to do this by hand! We first plot it and see that it looks like it might be an AR(p) model, but the residuals are not clean.
+
+```{r}
+tt <- filter(tswrdata::yearly, source == "GCAG")
+tt <- arrange(tt, year)
+plot(tt$mean, type = "l")
+acf(tt$mean)
+mod_1 <- arima(tt$mean, order = c(1, 0, 0))
+acf(resid(mod_1))
+```
+
+So, we try a few other things, none of which seem to work great.
+
+```{r}
+mod_2 <- arima(tt$mean, order = c(1, 1, 0))
+acf(resid(mod_2))
+mod_3 <- arima(tt$mean, order = c(2, 0, 0))
+acf(resid(mod_3))
+mod_4 <- arima(tt$mean, order = c(2, 2, 0))
+acf(resid(mod_4))
+```
+
+Let's write some code that will systematically go through all of the ARIMA models of certain orders, and compute the AIC.
+
+```{r eval = FALSE}
+orders <- expand.grid(0:2, 0:2, 0:2)
+orders$AIC <- NA
+for(i in 1:nrow(orders)) {
+  mod <- arima(tt$mean, order = as.numeric(orders[i,1:3]))
+  orders$AIC[i] <- AIC(mod)  
+}
+```
+
+Uh-oh, we get an error here. What we want to happen is that when R finds an issue with the model, that AIC gets reported as `NA`. We can do this using `tryCatch`.
+
+```{r}
+orders <- expand.grid(0:2, 0:2, 0:2)
+orders$AIC <- NA
+for(i in 1:nrow(orders)) {
+  orders$AIC[i] <- tryCatch(expr = {
+    mod <- arima(tt$mean, order = as.numeric(orders[i,1:3]))
+    AIC(mod)},
+    error = function(e){NA})
+}
+arrange(orders, AIC)
+```
+
+
+We see that the best model by the AIC criterion is ARIMA(0, 1, 2). Let's check the residuals. Looks pretty good to me.
+
+```{r}
+mod <- arima(tt$mean, order = c(0, 1, 2))
+acf(resid(mod))
+mod
+```
+:::
+
+:::tryit
+Write out the equation that describes the yearly global temperature in the example above.
+:::
+
+We continue by simulating from a model like we just computed. Note that if we re-run this simulation several times, we see that the global temperatures are just as likely to decrease as they are to increase.
+
+```{r}
+plot(arima.sim(model = list(order = c(0, 1, 2), ma = c(-.2889, -.1996)), 
+               n = 1000, 
+               sd = sqrt(0.009284)))
+```
+
+Now, let's see how to simulate values for the 10 years after the end of the data set. We need to know what the estimates for the last two residual values are, as well as the last value of the data. We then add 10 randomly chosen residuals, forecast the future values with error and plot.
+
+```{r}
+w <- c(resid(mod)[136:137], rnorm(10, 0, sqrt(0.009284)))
+x <- tt$mean[136:137]
+for(i in 3:12) {
+  x[i] <- x[i - 1] + w[i] - 0.2889 * w[i - 1] - 0.1996 * w[i - 2]
+}
+plot(c(tt$mean, x[3:12]))
+```
+
+If we repeat this a bunch of times, then we start to get a feel for the range of possible mean temperatures that are coming. The following creates a 10 by 100 matrix with possible mean temps for the next 10 years.
+
+```{r}
+poss_temps <- replicate(1000, {
+  w <- c(resid(mod)[136:137], rnorm(10, 0, sqrt(0.009284)))
+  for(i in 3:12) {
+    x[i] <- x[i - 1] + w[i] - 0.2889 * w[i - 1] - 0.1996 * w[i - 2]
+  }
+  x[2:12]
+})
+```
+
+```{r}
+plot(x = tt$year, tt$mean, type = "l", xlim = c(1880, 2025), ylim = c(-0.5, 1.4))
+for(i in 1:1000) {
+  points(x = 2016:2026, y = poss_temps[,i], type = "l", col='#FF000004', lwd = 4)
+}
+```
+
+```{r}
+ttsmall <- filter(tt, year > 2000)
+plot(x = ttsmall$year, ttsmall$mean, type = "l", xlim = c(2000, 2025), ylim = c(-0.5, 1.4))
+for(i in 1:1000) {
+  points(x = 2016:2026, y = poss_temps[,i], type = "l", col='#FF000004', lwd = 4)
+}
+```
+
+
+The last two digits in the `col` item control the **transparency** of the additional lines. I like to make the lines very transparent, but put in a lot of them. Then where muptiple lines overlap, the overall plot gets darker and indicates a higher probability of occuring. I should point out that we have only taken into account **one source** of variation, which is the estimate of the model residuals. We also have errors associated with our **parameter estimates**, which should be taken into account to get a more accurate estimate of the errors associated with predictions. One start would be to select parameter estimates at random from, say, a 2 standard error interval around the point estimate of the parameter. Even this is not perfect, though, because there is most likely **correlation** between the parameter estimates as well. We could imagine that a decrease in the first MA coefficient could consistently lead to an increase in the second coefficient, for example. So, we leave it like this, even though it is far from perfect.
+
 
 ## Exercises
 
@@ -68,4 +289,23 @@ u_t&= y_t - y_{t - 1}\\
 &=2c + w_t - 2w_{t - 1} + w_t
 \end{align*}
 So the twice differenced series is a MA(2) process that has been shifted up.7
+:::
+
+::: {.exercise #maeq}
+Suppose that $x_t$ is an ARIMA(0, 1, 1) model with MA coefficient .3 and standard deviation of the white noise process 1. Find an equation for $x_t$, as was done for the ARIMA(1, 1, 0) model in Example \@ref(ariprocess).
+:::
+
+::: {.solution #hide:maeq}
+$x_t = x_{t - 1} + w_t + w_{t - 1}$. Check via simulations.
+
+```{r}
+w <- rnorm(10000, 0, 1)
+x <- w[1]
+x[2] <- w[2]
+for(i in 3:10000) {
+  x[i] <- x[i - 1] + w[i] + .3 * w[i - 1]
+}
+arima(x[3:10000], order = c(0, 1, 1))
+```
+
 :::

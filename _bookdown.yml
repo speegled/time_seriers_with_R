@@ -9,7 +9,8 @@ rmd_files: [
   "03-forecasting.Rmd",
   "04-stochasticmodels.Rmd",
   "05-regression.Rmd",
-  "06-stationarymodels.Rmd"
+  "06-stationarymodels.Rmd",
+  "07-nonstationary.Rmd"
   ]
 
 # Knit-then-Merge (KM) build renders each .Rmd file in its own session
