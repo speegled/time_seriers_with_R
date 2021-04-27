@@ -779,6 +779,10 @@ Let $Y_i = X_i + Z_i$, where $Z_i$ is indpendent standard normal.
 Estimate the effective type I error when doing a two-sample $t$-test of $H_0: \mu_X = \mu_Y$ versus $\mu_X \not= \mu_Y$ on $X$ and $Y$ at $\alpha = .05$ level.
 :::
 
+::: {.solution #hide:stub}
+Stub
+:::
+
 ::: {.exercise #sol:negresid}
 What if the residuals are negatively correlated at lag 1? Re-do the simulation in Section \@ref(onepredictor) with AR(1) residuals that have **negative** correlation, and see what happens to the effective type I error rate.
 :::
@@ -799,8 +803,13 @@ mean(sim_data < .05)
 With negatively correlated residuals, we see that the effective type I error rate is too low. This will result in a loss of power associated with the test.
 :::
 
+
 ::: exercise
 Use the exact simulation as in the text from Section \@ref(onepredictor), but now consider confidence intervals defined in the textbook by plus or minus 2 times the standard error of the estimator. The standard error of the estimator can be obtained through `sqrt(diag(vcov(mod)))`. What percentage of times is the true slope in the 95 percent confidence interval as constructed this way?
+:::
+
+::: {.solution #hide:stub2}
+Stub
 :::
 
 ::: {.exercise #ex:zzz}
@@ -815,7 +824,8 @@ Use the exact simulation as in the text from Section \@ref(onepredictor), but no
 This wasn't a very good question! The data doesn't look appropriate for a linear model at all.
 
 ```{r}
-ss <- tswrdata::samarket
+
+ss <-  tswrdata::samarket
 ggplot(ss, aes(x = zar_usd, y = sa40)) + 
   geom_point() + 
   geom_smooth(method = "lm")
@@ -836,6 +846,7 @@ acf(residuals(mod))
 ```
 
 :::
+
 
 ::: {.exercise #ex:cigsdecor}
 Consider the `cigs` data set in the `fosdata` package. 
@@ -975,6 +986,7 @@ The confidence interval is much wider, $[851, 1449]$.
 
 :::
 
+
 ::: {.exercise #ex:tsastats}
 Consider the TSA throughput data in `tsa` in the `tswrdata` package. This data gives the number of passengers screened by TSA at various airports and times in the first quarter of 2020
 
@@ -983,7 +995,6 @@ b. Plot total passengers screened versus date. Does the plot appear linear? The 
 c. Create a model of total passengers screened versus time, treating the day of week as a seasonal variable, using `lm`.
 d. Examine the residuals. Do they appear correlated? 
 :::
-
 
 ::: {.solution #hide:tsastats}
 
@@ -1008,7 +1019,6 @@ tsa %>%
   filter(date >= ymd("2020-01-10") & date <= ymd("2020-03-07")) %>% 
   ggplot(aes(x = date, y = passengers)) + 
   geom_point()
-
 tsas <- tsa %>% 
   filter(date >= ymd("2020-01-10") & date <= ymd("2020-03-07"))
 ```
@@ -1023,6 +1033,7 @@ Yes, the residuals are correlated.
 :::
 
 
+
 ::: {.exercise #ex:samarketgls}
 Let's fix the `samarket` problem from above. Restrict to **February** and **March** of 2019, and create a linear model using `lm` of `sa40` as described by `zar_usd`.
 
@@ -1032,11 +1043,12 @@ c. Re-do with `gls` using an AR(1) model for the residuals.
 d. Compare the $p$-values associated with the slope in your `lm` model and your `gls` model. Which would you recommend?
 :::
 
+
 ::: {.solution #hide:samarketgls}
 
 ```{r}
-ss <- tswrdata::samarket
 
+ss <-  tswrdata::samarket
 ggplot(ss, aes(x = zar_usd, y = sa40)) + 
   geom_point() + 
   geom_smooth(method = "lm")
@@ -1046,7 +1058,7 @@ Let's instead restrict to a time period where a linear model might be appropriat
 
 ```{r}
 ss_2019 <- filter(ss, str_detect(date, "2019-0[23]"))
-ggplot(ss_2020, aes(x = zar_usd, y = sa40)) + 
+ggplot(ss_2019, aes(x = zar_usd, y = sa40)) + 
   #geom_line() + 
   geom_point()
 ```
@@ -1056,7 +1068,6 @@ This at least looks plausible for a linear model.
 ```{r}
 mod <- lm(sa40 ~ zar_usd, data = ss_2019)
 summary(mod)
-
 acf(resid(mod))
 ```
 
@@ -1066,9 +1077,7 @@ The model is Price = 21000 + 2000 * zar/usd exchange rate. The correlogram indic
 ```{r}
 acf(residuals(mod))
 ar(resid(mod))
-
 library(nlme)
-
 mod2 <- gls(sa40 ~ zar_usd, 
             data = ss_2019[complete.cases(ss_2019),], 
             correlation = corAR1(value = .7679))
@@ -1077,7 +1086,6 @@ confint(mod2)
 confint(mod)
 ```
 :::
-
 
 
 ::: {.exercise #ex:simulationchapter5}
@@ -1091,17 +1099,16 @@ where $B$ is chosen to make the time series have period 10.
 ::: {.solution #hide:simulationchapter5}
 
 ```{r}
-t <- 1:200
+set.seed(4840)
 errs <- arima.sim(model = list(ar = c(0.6)), n = 200)
-B <- 2*pi/10
+t <- 1:200
+B <- 2 * pi/10
 y <- .2 + .3 * t + .4 * cos(B * t) + .1 * sin(B * t) + errs
-sin1 <- sin(B * t)
-cos1 <- cos(B * t)
-lm(y ~ sin1 + cos1 + t)
+plot(y, type = "l")
 ```
 
-
 :::
+
 
 
 ::: {.exercise #ex:modelfitchapter5}
@@ -1111,4 +1118,37 @@ a. Are the true parameter values within 2 standard errors of the point estimates
 b. Are the residuals independent? Find the AR(1) estimate of the coefficient and see whether it is close to the 0.6 that you used to create the data.
 :::
 
+::: {.solution #hide:modelfitchapter5}
 
+```{r}
+mm <- data.frame(time = t,
+                 y = y)
+for (i in 1:5) {
+  eval(parse(text = paste0("mm$cos", i, " <- cos(i * B * mm$time)")))
+}
+for (i in 1:4) {
+  eval(parse(text = paste0("mm$sin", i, " <- sin(i * B * mm$time)")))
+}
+mod <- lm(y ~ ., data = mm)
+summary(mod)
+```
+
+We will reduce to just cos and sin since the others are not significant.
+
+```{r}
+mod <- lm(y ~ time + cos1 + sin1, data = mm)
+summary(mod)
+```
+Yes, all of the parameters are within two standard errors of the point estimates.
+
+```{r}
+acf(resid(mod))
+```
+Correlated.
+
+```{r}
+mod_resid <- arima(resid(mod), order = c(1, 0, 0))
+confint(mod_resid)
+```
+The true ar1 coefficient is in the 95 percent confidence interval.
+:::

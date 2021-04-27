@@ -640,12 +640,12 @@ Consider the adjusted closing cost of General Electric (symbol GE) in the calend
 
 ```{r}
 library(quantmod)
+library(stringr)
 getSymbols("GE")
 GE <- GE[str_detect(index(GE), "2018")]
 plot(GE$GE.Adjusted)
 acf(diff(GE$GE.Adjusted), na.action = na.pass)
 t.test(as.vector(diff(GE$GE.Adjusted)))
-
 ```
 
 Yes, this seems to be consistent with a random walk with drift.
@@ -827,7 +827,6 @@ This could be an AR(p) process, I suppose, though it isn't what they typically l
 ```{r}
 library(urca)
 summary(urca::ur.kpss(SPY$SPY.Adjusted)) #non-stationary!
-
 acf(SPY$SPY.Adjusted)
 ```
 
@@ -890,10 +889,10 @@ Despite there being no degrees of freedom known to run a test on the residuals, 
 ```{r}
 ss <- tswrdata::stltemp
 library(tidyverse)
+library(stringr)
 ss <- filter(ss, str_detect(name, "LAMBERT")) %>% 
   filter(str_detect(date, "200[0-5]"))
 plot(ss$tmin)
-
 tmin <- ss$tmin
 time <- 1:length(tmin)
 mod <- loess(tmin ~ time, span = .15)
@@ -905,7 +904,6 @@ points(mod$fitted, type = "l", col = 2)
 plot(mod$residuals)
 acf(mod$residuals)
 pacf(mod$residuals)
-
 mod2 <- arima(mod$residuals, order = c(3, 0, 0))
 forecast::checkresiduals(mod2)
 ```
@@ -915,7 +913,6 @@ The residuals of the `loess` model are reasonably well modeled by an AR(3) proce
 ```{r}
 plot(mod$fitted, type = "l", ylim = c(-30, 75))
 points(residuals(mod))
-
 ```
 
 

@@ -248,7 +248,6 @@ AAPL %>%
 Change the value of $q$ in the above code and see how it affects the plot. Which value do you like the best?
 :::
 
-
 ## Exercises
 
 ::: exercise
@@ -277,7 +276,6 @@ mm <- tswrdata::maine
 library(lubridate)
 library(tidyr)
 mm$date <- seq(ymd("1996-01-01"), by = "month", length.out = 128)
-
 mm %>% 
   mutate(trend = stats::filter(unemploy, filter = c(1/24, rep(1/12, 11), 1/24))) %>% 
   mutate(month = month(date)) %>% 
@@ -328,3 +326,4 @@ plot(decompose(ts(vac$doses, start = 1, frequency = 7), type = "mult"))
 
 
 :::
+

@@ -1,0 +1,82 @@
+# Forecasting with cross validation {#forecastingcv}
+
+```{r child = 'pre-chapter-script.Rmd'} 
+```
+
+## Cross Validation
+
+The basic idea in cross validation is to assess the predictive ability of your model directly by breaking the data set into two (or sometimes three) pieces. One piece, called the `training set` is used to create the model and make forecasts. The other piece, called the `testing set` is used to assess the accuracy of the forecasts. These two sets of data need to be disjoint; that is, no data point can be included both in the training set and in the testing set!
+
+The two measures of accuracy that we will be using in this chapter are root mean squared error (RMSE) and mean absolute percentage error (MAPE). If we have $n$ predictions $\hat y_i$ and actual values $y_i$, then 
+\[
+RMSE = \sqrt{\frac 1n \sum_{i = 1}^n \left(\hat y_i - y_i\right)^2}
+\]
+and
+\[
+MAPE = \frac 1n \sum_{i = 1}^n \left|\frac {\hat y_i}{y_i} \right| \times 100
+\]
+
+The `forecast` package has a function that computes these values for you, `accuracy`. So, if we want to compute the MAPE of predictions that are `c(2,2,2)` when the true values are `c(1,1,1)`, then we use
+
+```{r}
+forecast::accuracy(c(2,2,2), c(1,1,1))
+```
+
+We see (as expected) that on average we were off by exactly 100 percent. The function also provides RMSE and other measurements of accuracy that we are not going to talk about. In Exercise \@ref(ex:mapermse), you are asked to compute the MAPE and RMSE of some predictions.
+
+Let's continue talking about cross validation, in the context of a specific example. Consider the `amtrak` data in the `tswrdata` package. This gives 97 observations of passenger ridership on amtrak, by month. The plot is below:
+
+```{r}
+plot(tswrdata::amtrak$num_passengers, type = "l")
+```
+
+We will want to convert this to a `ts` object, with `frequency = 12`.
+
+```{r}
+passengers <- ts(tswrdata::amtrak$num_passengers, frequency = 12, start = c(1997, 1))
+```
+
+Now, we split the data into a **train** set and a **test** set. Since the data is a time series, we do not want to take a random subset of the time series for the test set, but rather a sequential subset. We also want to use the most recent data as the training set, and we want to have at least 12 months (one full frequency). What we decide to do is to split the data into a train set that contains the first `87 - 24 = 63` observations and the test set which contains the last 24 observations. We use the `subset` function in the `forecast` package so that the time series charactersitics are maintained.
+
+```{r}
+library(forecast)
+train <- subset(passengers, start = 1, end = 63)
+test <- subset(passengers, start = 64, end = 87)
+```
+
+Let's build a Holt-Winters model with trend and seasonality, and see what the MAPE measure of accuracy is.
+
+```{r}
+mod <- HoltWinters(train)
+```
+
+Now, unlike before, we don't care nearly as much about the residuals of the series or how well this model describes the data. What we care about is how well it **forecasts** future values. That is a big difference in philosophy!
+
+```{r}
+accuracy(predict(mod, n.ahead = 24), x = test)
+```
+
+We see that the RMSE is 72.2 and the MAPE is 2.66 percent. Much like AIC, these numbers don't mean a whole lot just by themselves. What they **can** be useful for, though, is comparing models. We compare Holt-Winters with trend and seasonality to an ARIMA model.
+
+```{r}
+mod2 <- forecast::auto.arima(train)
+forecast(mod2, h = 24)$mean #these are the point forecasts
+accuracy(forecast(mod2, h = 24)$mean, x = test)
+```
+
+In this case, we see that the MAPE and the RMSE are both considerably higher than what we obtained using HoltWinters. Therefore, based on this, we would prefer HoltWinters over ARIMA for forecasting future Amtrak ridership. Exercise \@ref(ex:traintest1) asks you to perform a similar task.
+
+
+::: {.exericse #ex:mapermse}
+Suppose that your estimates were `c(1,4,5)` and the true values were `c(0.5,4,12)`. Compute the MAPE and RMSE measures of accuracy for your predictions.
+:::
+
+
+::: {.exercise #ex:traintest1}
+Consider the global temperature data in the `yearly` data from the `tswrdata` package. Filter out only the GCAG data and make sure that you arrange the data in increasing time order. 
+
+a. Use a train-test split of about 80-20 percent and compare AR(1), MA(1) and ARIMA(0, 1, 0) models using both MAPE and RMSE. Report on your findings.
+b. Compare your results in part a to using AIC to decide between the three models.
+:::
+
+

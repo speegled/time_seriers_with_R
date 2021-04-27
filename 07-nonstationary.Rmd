@@ -412,19 +412,7 @@ At this point, we are usually modeling the residuals of some other model. The pu
 Simulate 1000 values from an ARCH(2) model with coefficients $\alpha_0 = .2$, $\alpha_1 = .3$ and $\alpha_2 = .4$. Examine the acf plot of the time series and of the squared values of the time series.
 :::
 
-::: {.solution #hide:tryit1}
-```{r}
-w <- rnorm(1000)
-alpha <- .2
-alpha1 <- .3
-alpha2 <- .4
-eps <- w[1:2]
-for(i in 3:1000) eps[i] <- w[i] * sqrt(alpha + alpha1 * eps[i - 1]^2 + alpha2 * eps[i - 2]^2)
-plot(eps, type = "l")
-acf(eps)
-acf(eps^2)
-```
-:::
+
 
 If we examine the correlogram of the squared values of a mean zero time series and determine that the variance is autocorrelated, then we will wish to model these values. We can use the `garch` function in the `tseries` package as follows. This works well because we **know** that the data was created via an ARCH(2) process. 
 
@@ -479,7 +467,8 @@ We can see that the series appears to have correlated variances. Let's pretend t
 orders <- expand.grid(0:3, 0:3)
 orders$AIC <- NA
 for(x  in 1:nrow(orders)) {
-  orders$AIC[x] <- tryCatch(AIC(garch(eps[101:5000], order = as.numeric(orders[x,]), 
+  orders$AIC[x] <- tryCatch(AIC(garch(eps[101:5000], 
+                                      order = as.numeric(orders[x,]), 
                                       control = garch.control(trace = FALSE))),
            error = function(e) {NA})
 }
@@ -490,7 +479,7 @@ arrange(orders, AIC)
 Create a time series of length 5000 that follows a GARCH(2, 1) model with $\alpha_0 = .2$, $\alpha_1 = .3$, $\alpha_2 = .4$ and $\beta_1 = .4$. Use the method above to fit a GARCH(q, p) model to it. Does it get $p$ and $q$ correct? 
 :::
 
-::: example
+::: {.example #exm:garchmodel}
 Return to the exchange rate example that we were looking at earlier in the section. 
 
 Create the plot below by restricting to data from 2018 on.
@@ -507,27 +496,31 @@ Use `arima.auto` to confirm that the following ARIMA model best describes the da
 
 ```{r echo=FALSE, message=F,warning=F}
 library(forecast)
+eesmall <- arrange(eesmall, date)
 
 mod <- auto.arima(eesmall$zar_usd)
-summary(mod)
+#mod <- arima(eesmall$zar_usd, order = c(0, 1, 0), method = "CSS")
 ```
+
+Check the residuals.
 
 Write out the full model.
 
 Examine the variance of the residuals using a correlogram, and see that they appear correlated.
 
-Model the residuals using a GARCH model. Looks like we need a GARCH(3, 1) model for the residuals.
+Model the residuals using a GARCH model. Looks like we need a GARCH(1, 1) model for the residuals.
 
 ```{r, echo = FALSE}
 orders <- expand.grid(0:3, 0:3)
 orders$AIC <- NA
+library(tseries)
 for(x  in 1:nrow(orders)) {
   orders$AIC[x] <- tryCatch(AIC(garch(residuals(mod), order = as.numeric(orders[x,]),
                                       control = garch.control(trace = FALSE))),
            error = function(e) {NA})
 }
 arrange(orders, AIC)
-mod2 <- garch(residuals(mod), order = c(3, 1), control = garch.control(trace = FALSE))
+mod2 <- garch(residuals(mod), order = c(1, 1), control = garch.control(trace = FALSE))
 summary(mod2)
 ```
 
@@ -539,7 +532,98 @@ acf(residuals(mod2)^2, na.action = na.pass)
 :::
 
 
+::: {.example #exm:garcherrorsim}
+In this example, we investigate obtaining error bounds for future values of the ZAR-USD exchange rate. We recall that we modeled the time series as a random walk process, and the residuals as a GARCH(1,1) process.
 
+```{r echo=FALSE}
+ee <- tswrdata::samarket
+eesmall <- filter(ee, lubridate::year(date) > 2017) %>% 
+  filter(!is.na(zar_usd))
+eesmall <- arrange(eesmall, date)
+
+mod <- auto.arima(eesmall$zar_usd)
+```
+
+
+```{r echo=FALSE}
+ggplot(eesmall, aes(x = date, y = zar_usd)) + 
+  geom_line()
+```
+
+We wish to give bounds for the ZAR-USD exchange rate for the 30 days beyond the end of the time series that we have. This is a particularly challenging assigment because we know that there was **severe** market turbulence in many markets around the middle of March, 2020. 
+
+Simulate data from March 18, 2020 through April 18, 2020 from the ZAR-USD exchange rate assuming that it is exactly a random walk with the parameters given in your model and plot. If you `set.seed(4840)` you should get similar answers to what I have below. Note that there are only 23 business days in this time period. You can create a vector with the correct dates in it by using
+
+```{r}
+library(lubridate)
+dd <- seq(ymd("2020-03-18"), ymd("2020-04-18"), by = 1)
+dd <- dd[wday(dd) %in% 2:6]
+dd
+```
+
+
+```{r echo=FALSE}
+set.seed(4840)
+new_vals <- arima.sim(model = list(order = c(0, 1, 0)), n = 23, sd = sqrt( 0.01879))[-1] + eesmall$zar_usd[553]
+eesmall$color = "Known"
+new_dat <- data.frame(date = dd, zar_usd = new_vals, sa40 = NA, color = "Simulated")
+
+eesmall2 <- rbind(eesmall, new_dat)
+
+ggplot(eesmall2, aes(x = date, y = zar_usd, color = factor(color))) + 
+  geom_line() +
+  labs(color = "time")
+```
+
+Now let's simulate $x_t = x_{t - 1} + \epsilon_t$, where $\epsilon_t$ come from the GARCH(1, 1) model that we built in the previous example. Ideally we should use the residuals from the data as a seed for the simulation, but we will forgo that step for simplicity.
+
+```{r echo=FALSE}
+x <- eesmall$zar_usd[553]
+eps <- TSA::garch.sim(alpha = c(0.0004362,0.0550778), beta = 0.9254048, n = 50)
+for(i in 2:24) {
+  x[i] <- x[i - 1] + eps[i]
+}
+new_dat <- data.frame(date = dd, zar_usd = x[-1], sa40 = NA, color = "Simulated")
+eesmall2 <- rbind(eesmall, new_dat)
+
+ggplot(eesmall2, aes(x = date, y = zar_usd, color = factor(color))) + 
+  geom_line() +
+  labs(color = "time")
+```
+
+It is difficult to see much difference in these for a single run, but we would hope that the second one would be a more accurate simulation of possible future values. Now, repeat the simulation using the GARCH(1,1) model 1,000 times and store in a matrix with 23 columns and 1000 rows. Then use `quantile` on each column to get an approximate 95 percent confidence interval for the lower and upper bounds of the exchange rate over the time period. Plot your results. 
+
+```{r echo=FALSE}
+N <- 1000
+mats <- matrix(rep(0, 23 * N), ncol = 23)
+for(j in 1:N) {
+  x <- eesmall$zar_usd[553]
+  eps <- TSA::garch.sim(alpha = c(0.0004362,0.0550778), beta = 0.9254048, n = 50)
+  for(i in 2:24) {
+    x[i] <- x[i - 1] + eps[i]
+  }
+  mats[j,] <- x[-1]
+}
+lower <- data.frame(lower = apply(mats, 2, function(x) quantile(x, .025)), date = dd, color = "lower")
+upper <- data.frame(upper = apply(mats, 2, function(x) quantile(x, .975)), date = dd, color = "upper")
+ggplot(eesmall2, aes(x = date, y = zar_usd, color = factor(color))) + 
+  geom_line() +
+  labs(color = "time") +
+  geom_line(data = lower, mapping = aes(x = date, y = lower)) +
+  geom_line(data = upper, mapping = aes(x = date, y = upper))
+```
+
+Use the true data that I sent and compute the true percentage of times the exchange rate was in the 95 percent confidence interval. I got about 35 percent.
+
+```{r echo=FALSE}
+library(here)
+here::i_am("time_series_with_R.Rproj")
+tt <- read.csv(here("data/exchange"), header = FALSE)
+mean(tt$V1 > lower$lower & tt$V1 < upper$upper)
+```
+
+Why do you think our model failed to provide accurate confidence intervals for the exchange rate?
+:::
 
 
 ## Exercises
@@ -573,41 +657,74 @@ acf(eps^2, main = "plot 2")
 ::: {.exercise #ex:ex3}
 Simulate a GARCH(1, 1) process with $\alpha_0 = 0.2$, $\alpha_1 = 0.4$ and $\beta_1 = 0.3$, plot the data and the acf of the sqaured values of the time series.
 :::
+
+::: {.exercise #ex:ex4}
+Fill in the details in Example \@ref(exm:garchmodel).
+:::
+
+::: {.solution #hide:garchmodel}
+Return to the exchange rate example that we were looking at earlier in the section. 
+
+Create the plot below by restricting to data from 2018 on.
+
+```{r echo=TRUE}
+ee <- tswrdata::samarket
+eesmall <- filter(ee, lubridate::year(date) > 2017) %>% 
+  filter(!is.na(zar_usd))
+ggplot(eesmall, aes(x = date, y = zar_usd)) + 
+  geom_point()
+```
+
+Use `arima.auto` to confirm that the following ARIMA model best describes the data according to AIC criterion.
+
+```{r echo=TRUE, message=F,warning=F}
+library(forecast)
+eesmall <- arrange(eesmall, date)
+
+mod <- auto.arima(eesmall$zar_usd)
+summary(mod)
+```
+
+Check the residuals.
+
+Write out the full model.
+
+Examine the variance of the residuals using a correlogram, and see that they appear correlated.
+
+Model the residuals using a GARCH model. Looks like we need a GARCH(1, 1) model for the residuals.
+
+```{r, echo = TRUE}
+orders <- expand.grid(0:3, 0:3)
+orders$AIC <- NA
+library(tseries)
+for(x  in 1:nrow(orders)) {
+  orders$AIC[x] <- tryCatch(AIC(garch(residuals(mod), order = as.numeric(orders[x,]),
+                                      control = garch.control(trace = FALSE))),
+           error = function(e) {NA})
+}
+arrange(orders, AIC)
+mod2 <- garch(residuals(mod), order = c(1, 1), control = garch.control(trace = FALSE))
+summary(mod2)
+```
+
+Let's check the residuals of **this** part! It seems we have adequately modeled the correlation in the variance.
+
+```{r echo=TRUE}
+acf(residuals(mod2)^2, na.action = na.pass)
+```
+:::
+
+
+
+
 ::: {.exercise #ex:squarediff}
 Suppose $x_t = a + bt + ct^2 + w_t$. What kind of series is the **twice differenced** time series? That is, let $y_t = x_t - x_{t - 1}$ and $u_t = y_t - y_{t - 1}$; I am asking about $u_t$.
 :::
 
-::: {.solution #hide:squarediff}
-\begin{align*}
-y_t &= x_t - x_{t - 1}\\
-&=a + bt + ct^2 + w_t - a - bt + b - ct^2 + 2ct - c - w_{t - 1}\\
-&=b - c + 2ct + w_t - w_{t - 1}
-\end{align*}
 
-Therefore, 
-\begin{align*}
-u_t&= y_t - y_{t - 1}\\
-&=b - c + 2ct + w_t - w_{t - 1} - b + c - 2ct + 2c - w_{t - 1} + w_{t - 2}\\
-&=2c + w_t - 2w_{t - 1} + w_t
-\end{align*}
-So the twice differenced series is a MA(2) process that has been shifted up.7
-:::
 
 ::: {.exercise #maeq}
 Suppose that $x_t$ is an ARIMA(0, 1, 1) model with MA coefficient .3 and standard deviation of the white noise process 1. Find an equation for $x_t$, as was done for the ARIMA(1, 1, 0) model in Example \@ref(ariprocess).
 :::
 
-::: {.solution #hide:maeq}
-$x_t = x_{t - 1} + w_t + w_{t - 1}$. Check via simulations.
 
-```{r}
-w <- rnorm(10000, 0, 1)
-x <- w[1]
-x[2] <- w[2]
-for(i in 3:10000) {
-  x[i] <- x[i - 1] + w[i] + .3 * w[i - 1]
-}
-arima(x[3:10000], order = c(0, 1, 1))
-```
-
-:::

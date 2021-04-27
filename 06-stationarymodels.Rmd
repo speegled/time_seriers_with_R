@@ -489,7 +489,6 @@ mod21 <- arima(z, order = c(2, 0, 1))
 AIC(mod21) #whoa dude
 mod30 <- arima(z, order = c(3, 0, 0))
 AIC(mod30)
-
 modfinal <-  arima(z, order = c(1, 0, 2), include.mean = F)
 AIC(modfinal)
 ```
@@ -575,7 +574,6 @@ dat <- c(1, 2, 1.7)
 ff <- function(pars) {
   -prod(dnorm(dat, pars[1], pars[2]))
 }
-
 optim(par = c(1, 1), fn = ff)
 mean(dat)
 sqrt(1/3 * sum((dat - mean(dat))^2)) 

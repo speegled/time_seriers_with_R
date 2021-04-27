@@ -612,8 +612,6 @@ sim_data <- replicate(10000, {
 })
 mean(sim_data)
 .3 * .7/(.3^2 + .7^2) #not very close, this is because acf is biased estimate for small sample sizes
-
-
 sim_data <- replicate(10000, {
   z <- rnorm(201)
   x <- z[1]
@@ -642,31 +640,26 @@ We know from the notes that the autocovariance at lag 2 is  $\frac {\alpha^2\sig
 For each of the following correlograms, indicate whether it is consistent with the generating process MA(1), AR(1), or neither.  In the case that it is MA(1) or AR(1), provide rough estimates of the parameters. 
 
 ```{r maorarplot, out.width=c('50%', '50%'), fig.show='hold', echo=FALSE}
-
 beta <- .7
 z <- rnorm(200)
 x <- z[1]
 for(i in 2:200) x[i] <- beta * z[i] + (1 - beta) * z[i - 1]
 acf(x[-1], main = "Plot 1")
-
 beta <- .5
 z <- rnorm(200)
 x <- z[1]
 for(i in 2:200) x[i] <- beta * z[i] + (1 - beta) * z[i - 1]
 acf(x[-1], main = "Plot 2")
-
 beta <- .8
 z <- rnorm(200)
 x <- z[1]
 for(i in 2:200) x[i] <- z[i] + beta * x[i - 1]
 acf(x[-1], main = "Plot 3")
-
 beta <- -.8
 z <- rnorm(200)
 x <- z[1]
 for(i in 2:200) x[i] <- z[i] + beta * x[i - 1]
 acf(x[-1], main = "Plot 4")
-
 z <- rnorm(2000)
 x <- z[1]
 x[2] <- .4 * z[1] + .6 * z[2]

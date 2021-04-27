@@ -448,11 +448,6 @@ mod_hw$SSE
 We see that we get the same values for the smoothing parameters as Holt-Winters, as well as the same values of the SSE. The coefficients given by Holt-Winters are the values of `a`, `b` and `s` that we estimated in the previous R chunk.
 :::
 
-
-
-
-
-
 ## Exercises
 
 ::: {.exercise #ex:hazardfunction}
@@ -485,17 +480,13 @@ b. How many blackberries does this model estimate will be sold overall?
 bass <- function(p, q, m, x) {
   (m*(p + q)^2 * exp(-(p + q) * x))/(p * (1 + (q/p) * exp(-(p + q)* x))^2)
 }
-
 bb <- tswrdata::blackberry
 bb$time <- 1:nrow(bb)
-
 bb_mod <- nls(handheld ~ bass(p, q, m, time), data = bb, start = list(p = 0.001, q = .3, m = 400), subset = 1:20)
 bb_mod <- nls(handheld ~ bass(p, q, m, time), data = bb[1:20,], start = list(p = 0.001, q = .3, m = 400), subset = 1:20)
 a <- coefficients(bb_mod)
-
 plot(bb$handheld)
 curve(bass(a[1], a[2], a[3], x), add = T, col = 2)
-
 ```
 
 This overestimates the total sales, but not by too much. The total sales are estimated to be `r round(a[3])` million units.
@@ -511,16 +502,12 @@ Consider the `ipod` data in the `tswrdata` package. Estimate the values of $p$, 
 bass <- function(p, q, m, x) {
   (m*(p + q)^2 * exp(-(p + q) * x))/(p * (1 + (q/p) * exp(-(p + q)* x))^2)
 }
-
 ipod <- tswrdata::ipod
 ipod$time <- 1:nrow(ipod)
-
 ipod_mod <- nls(i_pod ~ bass(p, q, m, time), data = ipod, start = list(p = 0.01, q = .1, m = 100), subset = 1:20)
 a <- coefficients(ipod_mod)
-
 plot(ipod$i_pod)
 curve(bass(a[1], a[2], a[3], x), add = T, col = 2)
-
 ```
 
 While the fit is very good up through about index 20, it becomes poor thereafter. It underestimates the total number of units sold as well. This model did not do a good job of predicting the sales.
@@ -602,22 +589,20 @@ In this exercise, we investigate the choice of picking the intercept of the line
 ::: {.solution #hide:whyintercept}
 
 ```{r}
+sweetwhite <- tswrdata::auswine$sweetw
 mod_decompose <- decompose(ts(sweetwhite[1:24], frequency = 12))
 ```
 
 ```{r}
 sweetwhite <- tswrdata::auswine$sweetw
 mod_decompose <- decompose(ts(sweetwhite[1:24], frequency = 12))
-
 s <- mod_decompose$figure #estimate for starting seasonality
 trend <- na.omit(mod_decompose$trend) #note that this is JULY-JUNE; missing JAN-JUN of first year!!
 tt <- 1:12
 mod_lm <- lm(trend ~ tt)
-
 a <- coefficients(mod_lm)[1] 
 b <- coefficients(mod_lm)[2] #initial estimate for slope
 a <- a + 7 * b #this is the prediction for January of year 2, and the only change in the code
-
 ss1pe <- function(pars, frequency, debug = FALSE) {
   if(debug) {browser()}
   alpha <- pars[1]
@@ -642,7 +627,6 @@ ss1pe <- function(pars, frequency, debug = FALSE) {
 }
 x <- as.vector(sweetwhite)
 optim(par = c(.2, .2, .2), fn = ss1pe, frequency = 12, method = "L-BFGS-B", lower = rep(0, 3), upper = rep(1, 3))
-
 HoltWinters(ts(sweetwhite, frequency = 12))$SSE
 ```
 
@@ -657,7 +641,6 @@ mod_hw_2$SSE #matches what we obtained
 ```{r echo = FALSE, eval = FALSE}
 length <- 200
 frequency <- 12
-
 b <- 1
 b_change <- cumsum(runif(200, rep(c(-.001, -.01), each = 100), rep(c(.001, .01), each = 100)))
 b_change
@@ -668,28 +651,21 @@ s <- runif(1, .1, 2) * sin(1:12/12 * 2 * pi) +
 for(i in 13:200) s[i] <- s[i - 12] + runif(1, -.05, .05)
 a <- 1
 for(i in 2:200) a[i] <- a[i - 1] + b[i - 1] + if(runif(1) < .99) {runif(1, -.05, .05)} else {sample(c(-1, 1), 1) * rpois(1, 50)}
-
-
 x <- a + 5 * b + 10 * sd(b) * s + rnorm(200, 0, 1/3 * sd(a + b + s))
 plot(x, type = "l")
 hwmod <- HoltWinters(ts(x, frequency = 12))
 hwmod$SSE
 hwmod
-
-
 mod_decompose <- decompose(ts(x[1:24], frequency = 12))
 s <- mod_decompose$figure #estimate for starting seasonality
 trend <- na.omit(mod_decompose$trend) #note that this is JULY-JUNE; missing JAN-JUN of first year!!
 tt <- 1:12
 mod_lm <- lm(trend ~ tt)
-
 #intercept of model; initial estimate for mean level in JUNE, but we use for estimate for January of year 2
 a <- coefficients(mod_lm)[1] 
-
 b <- coefficients(mod_lm)[2] #initial estimate for slope
 a <- a + 7 * b
 optim(par = c(.2, .2, .2), fn = ss1pe, frequency = 12, method = "L-BFGS-B", lower = rep(0, 3), upper = rep(1, 3))
-
 ```
 
 :::
@@ -733,10 +709,8 @@ library(tidyverse)
 library(lubridate)
 ss$date <- ymd(ss$date)
 ss <- filter(ss, str_detect(name, "LAMBERT"), !str_detect(date, "02-29"))
-
 ss <- filter(ss, date >= "1970-01-01")
 mod_ss <- HoltWinters(ts(ss$tmax[!is.na(ss$tmax)], frequency = 365, start = c(2010, 1)))
-
 broom::tidy(predict(mod_ss, n.ahead = 30, prediction.interval = T, level = 0.9)) %>% 
   mutate(date = rep(seq(ymd("2021-01-19"), length.out = 30, by = "day"), each = 3)) %>% 
   filter(date == "2021-02-13")
@@ -778,7 +752,6 @@ forecast::findfrequency(aa$num_passengers)
 aap <- ts(aa$num_passengers, frequency = 12, start = c(1997, 1))
 mod_aa <- HoltWinters(aap)
 plot(mod_aa) #looks pretty good
-
 forecast <- predict(mod_aa, n.ahead = 12, prediction.interval = T, level = .95)
 plot(mod_aa, forecast)
 ```
@@ -830,3 +803,6 @@ mod_z
 ```
 
 :::
+
+
+
